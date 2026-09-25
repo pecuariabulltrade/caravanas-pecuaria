@@ -117,6 +117,7 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
       <label class="f">HEMBRA <input type="number" min="0" id="iQ_HEMBRA" style="width:70px"></label>
       <label class="f">MACHO <input type="number" min="0" id="iQ_MACHO" style="width:70px"></label>
       <button class="b s" id="iSelCant">Marcar esas cantidades</button>
+      <label class="f">o marcar desde un Excel (columna con las caravanas) <input type="file" id="iExcel" accept=".xlsx,.xls,.csv"></label>
       <button class="b s hidden" id="iVerTodas">Ver todas otra vez</button>
       <span class="sp"></span>
       <span id="iCount" class="muted">0 seleccionadas</span>
@@ -545,6 +546,20 @@ $('iSelCant').onclick=()=>{
   state.ing.soloSel=true; pintarIngresos(); toast(falta.length?('Faltan caravanas — '+falta.join('; ')):`${state.ing.sel.size} caravanas marcadas`, 5000);
 };
 $('iVerTodas').onclick=()=>{ state.ing.soloSel=false; pintarIngresos(); };
+$('iExcel').onchange = e=>{
+  const f=e.target.files[0]; if(!f) return; const rd=new FileReader();
+  rd.onload=ev=>{ try{ const wb=XLSX.read(ev.target.result,{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]]; const rows=XLSX.utils.sheet_to_json(ws,{header:1});
+      const nums=new Set(); rows.forEach(r=>r.forEach(c=>{ const v=String(c??'').trim(); if(/^032\d{12}$/.test(v)) nums.add(v); }));
+      if(!nums.size) return toast('No encontré caravanas 032 en el Excel',4000);
+      const pend=state.ing.rows.filter(r=>r.situacion==='pendiente'); const enGrilla=new Set(state.ing.rows.map(r=>r.caravana));
+      state.ing.sel.clear(); pend.forEach(r=>{ if(nums.has(r.caravana)) state.ing.sel.add(r.caravana); });
+      const noPend=[...nums].filter(x=>enGrilla.has(x)&&!state.ing.sel.has(x)).length, noEsta=[...nums].filter(x=>!enGrilla.has(x)).length;
+      state.ing.soloSel=true; pintarIngresos();
+      toast(`${f.name}: ${nums.size} caravanas en el Excel · ${state.ing.sel.size} marcadas${noPend?` · ${noPend} ya en el padrón`:''}${noEsta?` · ${noEsta} no están en lo filtrado`:''}`, 7000);
+      e.target.value='';
+    }catch(err){ toast('No pude leer el Excel: '+err.message); } };
+  rd.readAsArrayBuffer(f);
+};
 $('iCopiar').onclick=async ()=>{ const txt=[...state.ing.sel].join('\n'); try{ await navigator.clipboard.writeText(txt); toast(`${state.ing.sel.size} caravanas copiadas al portapapeles`); }catch(e){ prompt('Copiá las caravanas:', txt.replace(/\n/g,' ')); } }; $('iSelNada').onclick=()=>{state.ing.sel.clear();state.ing.soloSel=false;pintarIngresos();};
 $('iAlta').onclick=()=>{
   try{ exigirTurno(); }catch(e){ return toast(e.message,4000); }
