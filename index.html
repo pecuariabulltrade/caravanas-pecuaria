@@ -200,10 +200,13 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
       <label class="f">Bolsa <input id="aBolsa" placeholder="CLASIFICAR" style="width:110px"></label>
       <label class="f">Fecha de alta <input type="date" id="aFecha"></label>
       <label class="f">DTE (opcional) <input id="aDte"></label>
-      <label class="f">Procedencia (opcional) <input id="aProc" style="width:180px"></label>
+      <label class="f">Procedencia (titular / establecimiento de origen) <input id="aProc" style="width:200px"></label>
+      <label class="f">RENSPA origen <input id="aRenspa" placeholder="00.000.0.00000/00" style="width:150px"></label>
+      <label class="f">CUIG origen <input id="aCuig" placeholder="AA000" maxlength="10" style="width:90px"></label>
       <label class="f">Observación <input id="aObs" style="width:220px"></label>
       <button class="b" id="aPrev">Vista previa</button>
       <button class="b p" id="aConf" disabled>Confirmar alta</button>
+      <button class="b p" id="aConfDdjj" disabled>Confirmar y generar DDJJ</button>
     </div>
     <div id="aPrevBox"></div>
   </div>
@@ -425,7 +428,7 @@ function pintarTurno(){
   if(tengoTurno()){ p.textContent='Turno de carga: vos'; p.className='pill ok'; b.textContent='Liberar turno'; }
   else if(turnoLibre()){ p.textContent='Turno de carga: libre'; p.className='pill'; b.textContent='Tomar turno'; }
   else { p.textContent='Turno de carga: '+TURNO.usuario; p.className='pill warn'; b.textContent='Tomar turno'; }
-  document.querySelectorAll('#iAlta,#eBaja,#cBaja,#aConf,#bConf,#vConf,#kfConf').forEach(x=>x.title = tengoTurno()?'':'Necesitás el turno de carga');
+  document.querySelectorAll('#iAlta,#eBaja,#cBaja,#aConf,#aConfDdjj,#bConf,#vConf,#kfConf').forEach(x=>x.title = tengoTurno()?'':'Necesitás el turno de carga');
 }
 $('btnTurno').onclick = ()=> tengoTurno() ? liberarTurno() : tomarTurno();
 function exigirTurno(){ if(!tengoTurno()) throw new Error('Necesitás tomar el turno de carga (botón arriba a la derecha)'+(turnoLibre()?'':`; lo tiene ${TURNO.usuario}`)); }
@@ -745,15 +748,21 @@ $('aPrev').onclick = async ()=>{
     nums.forEach(n=>{ const e=est[n]; if(!e) cnt.nuevas++; else if(e==='virgen') cnt.virgen++; else cnt.otras.push(n+' ('+e+')'); });
     state.altaPrev = nums.filter(n=>!est[n]||est[n]==='virgen');
     $('aPrevBox').innerHTML=`<div class="msg ${cnt.otras.length?'warn':'ok'}">${nums.length} caravanas: ${cnt.nuevas} nuevas, ${cnt.virgen} vírgenes que pasan a activas, ${cnt.otras.length} se omiten (ya activas/salida/baja/anuladas)${cnt.otras.length?': '+esc(cnt.otras.slice(0,10).join(', '))+(cnt.otras.length>10?'…':''):''}</div>`;
-    $('aConf').disabled = !state.altaPrev.length;
-  }catch(e){ msg('aPrevBox','err',e.message); $('aConf').disabled=true; }
+    $('aConf').disabled = $('aConfDdjj').disabled = !state.altaPrev.length;
+  }catch(e){ msg('aPrevBox','err',e.message); $('aConf').disabled=$('aConfDdjj').disabled=true; }
 };
-$('aConf').onclick = async ()=>{
-  try{ exigirTurno(); $('aConf').disabled=true;
-    const r=await rpc('alta_masiva',{p_numeros:state.altaPrev,p_propietario_id:+$('aProp').value,p_categoria:$('aCat').value,p_fecha_alta:$('aFecha').value,p_dte:$('aDte').value||null,p_origen:'manual',p_fuente:'manual',p_usuario:USER,p_nro_tropa:null,p_compra_id:null,p_observaciones:$('aObs').value||null,p_procedencia:$('aProc').value.trim()||null,p_bolsa:$('aBolsa').value.trim()||null});
-    msg('aPrevBox','ok',`Alta confirmada: ${r.total} caravanas (${r.nuevas} nuevas, ${r.virgenes_usadas} vírgenes)`); $('aLista').value=''; $('aRd').value=$('aRh').value=''; state.altaPrev=null;
-  }catch(e){ msg('aPrevBox','err',e.message); $('aConf').disabled=false; }
+const confirmarAltaManual = async (conDdjj)=>{
+  try{ exigirTurno(); $('aConf').disabled=$('aConfDdjj').disabled=true;
+    const renspa=$('aRenspa').value.trim(), cuig=$('aCuig').value.trim().toUpperCase(), proc=$('aProc').value.trim(), dte=$('aDte').value.trim();
+    const obs=[$('aObs').value.trim(), renspa&&'RENSPA: '+renspa, cuig&&'CUIG: '+cuig].filter(Boolean).join(' · ')||null;
+    const nums=state.altaPrev.slice();
+    const r=await rpc('alta_masiva',{p_numeros:nums,p_propietario_id:+$('aProp').value,p_categoria:$('aCat').value,p_fecha_alta:$('aFecha').value,p_dte:dte||null,p_origen:'manual',p_fuente:'manual',p_usuario:USER,p_nro_tropa:null,p_compra_id:null,p_observaciones:obs,p_procedencia:proc||null,p_bolsa:$('aBolsa').value.trim()||null});
+    msg('aPrevBox','ok',`Alta confirmada: ${r.total} caravanas (${r.nuevas} nuevas, ${r.virgenes_usadas} vírgenes), bolsa ${r.bolsa}`);
+    if(conDdjj) generarDDJJ({dte, titular:proc, establecimiento:proc, renspa, cuig, fecha:$('aFecha').value, numeros:nums.filter(x=>!(r.omitidas||[]).includes(x))});
+    $('aLista').value=''; $('aRd').value=$('aRh').value=''; state.altaPrev=null;
+  }catch(e){ msg('aPrevBox','err',e.message); $('aConf').disabled=$('aConfDdjj').disabled=false; }
 };
+$('aConf').onclick=()=>confirmarAltaManual(false); $('aConfDdjj').onclick=()=>confirmarAltaManual(true);
 $('vConf').onclick = async ()=>{
   try{ exigirTurno(); const cant=+$('vCant').value; if(!cant) throw new Error('Indicá la cantidad');
     if(!confirm(`¿Asignar ${cant} caravanas vírgenes a ${propNombre(+$('vProp').value)} como ${$('vCat').value}?`)) return;
