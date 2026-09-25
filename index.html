@@ -550,20 +550,23 @@ $('iAlta').onclick=()=>{
   try{ exigirTurno(); }catch(e){ return toast(e.message,4000); }
   const sel=[...state.ing.sel], rows=state.ing.rows.filter(r=>sel.includes(r.caravana));
   const cats=[...new Set(rows.map(r=>r.categoria).filter(Boolean))], tropas=[...new Set(rows.map(r=>r.nro_tropa))], hots=[...new Set(rows.map(r=>r.hotelero).filter(Boolean))], origs=[...new Set(rows.map(r=>r.origen).filter(Boolean))];
-  const propProp = hots.length===1 ? propDesdeHotelero(hots[0]) : null;
-  panel(`<h3>Dar de alta ${sel.length} caravanas</h3><p class="muted">Tropas: ${esc(tropas.join(', '))} · WinCampo: ${esc(hots.join(', '))} · viene de ${esc(origs.join(', ')||'—')}</p>
-    <label class="f">DTE de ingreso (el que usaste en SIGSA) <input id="pDte" placeholder="032…"></label><br>
+  let U={}; try{ U=JSON.parse(localStorage.getItem('ultimaAlta')||'{}'); }catch(e){}
+  const propProp = U.prop || (hots.length===1 ? propDesdeHotelero(hots[0]) : null);
+  panel(`<h3>Dar de alta ${sel.length} caravanas</h3>${U.dte?`<p class="muted">Precargado con la última alta (DTE ${esc(U.dte)}); cambiá lo que haga falta. <a href="#" id="pLimpiar">Limpiar</a></p>`:''}<p class="muted">Tropas: ${esc(tropas.join(', '))} · WinCampo: ${esc(hots.join(', '))} · viene de ${esc(origs.join(', ')||'—')}</p>
+    <label class="f">DTE de ingreso (el que usaste en SIGSA) <input id="pDte" placeholder="032…" value="${esc(U.dte||'')}"></label><br>
     <label class="f">Propietario de alta <select id="pProp">${PROPS.filter(p=>p.activo).map(p=>`<option value="${p.id}" ${propProp===p.id?'selected':''}>${esc(p.nombre)}</option>`).join('')}</select></label><br>
-    <label class="f">Fecha de alta (cierre en SIGSA) <input type="date" id="pFecha" value="${hoy()}"></label><br>
-    <label class="f">Procedencia (titular y establecimiento de origen, como figura en WinCampo) <input id="pProc" value="${esc(origs.length===1?origs[0]:'')}"></label><br>
-    <div class="row" style="margin:4px 0 8px"><label class="f">RENSPA origen <input id="pRenspa" placeholder="00.000.0.00000/00" style="width:150px"></label><label class="f">CUIG origen <input id="pCuig" placeholder="AA000" maxlength="10" style="width:90px"></label></div>
-    <label class="f">Bolsa <input id="pBolsa" value="FEEDLOT"></label><br>
+    <label class="f">Fecha de alta (cierre en SIGSA) <input type="date" id="pFecha" value="${U.fecha||hoy()}"></label><br>
+    <label class="f">Procedencia (titular y establecimiento de origen, como figura en WinCampo) <input id="pProc" value="${esc(origs.length===1?origs[0]:(U.proc||''))}"></label><br>
+    <div class="row" style="margin:4px 0 8px"><label class="f">RENSPA origen <input id="pRenspa" placeholder="00.000.0.00000/00" style="width:150px" value="${esc(U.renspa||'')}"></label><label class="f">CUIG origen <input id="pCuig" placeholder="AA000" maxlength="10" style="width:90px" value="${esc(U.cuig||'')}"></label></div>
+    <label class="f">Bolsa <input id="pBolsa" value="${esc(U.bolsa||'FEEDLOT')}"></label><br>
     <div class="muted" style="margin:6px 0 2px">Categoría de cierre (la de la guía; manda sobre la de WinCampo)</div>
     ${(()=>{ const c={}; rows.forEach(r=>{ const k=r.categoria||'SIN'; c[k]=(c[k]||0)+1; }); return Object.entries(c).map(([k,v])=>`<label class="f" style="margin-bottom:4px">${v} × WinCampo ${esc(k)} → <select data-cierre="${esc(k)}">${['MACHO','HEMBRA','VACA','TORO','MIXTO'].map(o=>`<option ${o===k?'selected':''}>${o}</option>`).join('')}</select></label>`).join(''); })()}
-    <label class="f">Observación <input id="pObs"></label><br>
+    <label class="f">Observación <input id="pObs" value="${esc(U.obs||'')}"></label><br>
     <div id="pMsg"></div><button class="b p" id="pOk">Confirmar alta</button> <button class="b p" id="pOkDdjj">Confirmar y generar DDJJ</button> <button class="b" onclick="cerrarPanel()">Cancelar</button>`);
+  if($('pLimpiar')) $('pLimpiar').onclick=e=>{ e.preventDefault(); try{ localStorage.removeItem('ultimaAlta'); }catch(x){} ['pDte','pRenspa','pCuig','pObs'].forEach(i=>$(i).value=''); $('pFecha').value=hoy(); $('pBolsa').value='FEEDLOT'; $('pProc').value=origs.length===1?origs[0]:''; const pp=hots.length===1?propDesdeHotelero(hots[0]):null; if(pp) $('pProp').value=pp; $('pLimpiar').parentElement.remove(); };
   const confirmar = async (conDdjj)=>{
     const dte=$('pDte').value.trim(); if(!dte) return msg('pMsg','err','El DTE de ingreso es obligatorio');
+    try{ localStorage.setItem('ultimaAlta', JSON.stringify({dte, prop:+$('pProp').value, fecha:$('pFecha').value, proc:$('pProc').value.trim(), renspa:$('pRenspa').value.trim(), cuig:$('pCuig').value.trim().toUpperCase(), bolsa:$('pBolsa').value.trim(), obs:$('pObs').value.trim()})); }catch(x){}
     const cierre={}; document.querySelectorAll('#side select[data-cierre]').forEach(x=>cierre[x.dataset.cierre]=x.value);
     const porCat={};
     rows.forEach(r=>{ const c=cierre[r.categoria||'SIN']; if(!c) return; (porCat[c+'|'+(r.nro_tropa||'')] ??= []).push(r.caravana); });
