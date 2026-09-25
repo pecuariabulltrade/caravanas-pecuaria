@@ -443,10 +443,10 @@ $('nav').onclick = e=>{ const b=e.target.closest('button'); if(b) mostrarTab(b.d
 // ---------- INICIO ----------
 async function cargarInicio(){
   const [pend, {data:res}, {count:virg}, {count:act}] = await Promise.all([contarPendientes(), sb.from('v_resumen').select('*'),
-    sb.from('caravanas').select('*',{count:'exact',head:true}).eq('estado','virgen'), sb.from('caravanas').select('*',{count:'exact',head:true}).eq('estado','activa')]);
-  $('kpis').innerHTML = [['Activas en el padrón',act||0],['Vírgenes disponibles',virg||0],['Ingresos pendientes de alta',pend[0]],['Salidas pendientes de DTE',pend[1]]]
+    sb.from('caravanas').select('*',{count:'exact',head:true}).eq('estado','virgen'), sb.from('caravanas').select('*',{count:'exact',head:true}).in('estado',['activa','salida'])]);
+  $('kpis').innerHTML = [['Activas en SENASA',act||0],['Vírgenes disponibles',virg||0],['Ingresos pendientes de alta',pend[0]],['Salidas WinCampo pendientes de DTE',pend[1]]]
     .map(([l,v])=>`<div class="kpi"><b>${v.toLocaleString('es-AR')}</b><span>${l}</span></div>`).join('');
-  $('resumenProp').innerHTML = `<table><tr><th>Propietario</th><th>Activas</th><th>Salidas pendientes</th><th>Bajas</th></tr>`+(res||[]).map(r=>`<tr><td>${esc(r.propietario)}</td><td>${r.activas}</td><td>${r.salidas_pendientes}</td><td>${r.bajas}</td></tr>`).join('')+'</table>';
+  $('resumenProp').innerHTML = `<table><tr><th>Propietario</th><th>Activas</th><th>Salidas por WinCampo (sin DTE)</th><th>Activas con 40 días</th><th>Activas con 90 días</th><th>Bajas</th></tr>`+(res||[]).map(r=>`<tr><td>${esc(r.propietario)}</td><td><b>${r.activas}</b></td><td>${r.salidas_wincampo}</td><td>${r.con_40_dias}</td><td>${r.con_90_dias}</td><td>${r.bajas}</td></tr>`).join('')+`<tr class="tropa-h"><td>Total</td><td>${(res||[]).reduce((a,r)=>a+r.activas,0)}</td><td>${(res||[]).reduce((a,r)=>a+r.salidas_wincampo,0)}</td><td>${(res||[]).reduce((a,r)=>a+r.con_40_dias,0)}</td><td>${(res||[]).reduce((a,r)=>a+r.con_90_dias,0)}</td><td>${(res||[]).reduce((a,r)=>a+r.bajas,0)}</td></tr>`+'</table><p class="muted">Activas = dadas de alta en SENASA (incluye las que WinCampo ya dio por salidas hasta que se confirme la baja con DTE). Solo una baja, manual o desde Egresos, descuenta activas.</p>';
   $('syncLog').innerHTML = await syncLogHtml();
 }
 

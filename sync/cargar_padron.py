@@ -150,7 +150,7 @@ def main():
     res = get_all("v_resumen", "select=*")
     print("\nResumen por propietario:")
     for x in res:
-        print(f"  {x['propietario']:<12} activas {x['activas']:>5}  salidas pendientes {x['salidas_pendientes']:>5}  bajas {x['bajas']:>5}")
+        print(f"  {x['propietario']:<13} activas {x['activas']:>5}  (salidas WinCampo {x['salidas_wincampo']:>4}, con 40 días {x['con_40_dias']:>5}, con 90 días {x['con_90_dias']:>5})  bajas {x['bajas']:>4}")
 
 
 if __name__ == "__main__":
