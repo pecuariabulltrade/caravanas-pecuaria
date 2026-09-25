@@ -2,7 +2,8 @@
 """
 cargar_padron.py — Caravanas Pecuaria
 Carga inicial del padrón de caravanas ACTIVAS en SENASA desde padron/padron_032.csv
-(generado a partir de "CARAVANAS PADRON.xlsx": solo caravanas 032, sin duplicados).
+(generado a partir de "CARAVANAS PADRON.xlsx": electrónicas 032 y visuales, sin duplicados;
+si no existe, usa padron_032.csv).
 
 Cada caravana queda 'activa' con origen_alta = padron_inicial, propietario, categoría,
 fecha de alta (FECHA INGRESO del Excel), procedencia (ORIGEN del Excel) y la bolsa en
@@ -25,9 +26,22 @@ AQUI = Path(__file__).resolve().parent
 load_dotenv(AQUI / ".env")
 SB_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SB_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
-CSV = AQUI.parent / "padron" / "padron_032.csv"
+CSV = AQUI.parent / "padron" / "padron_completo.csv"
+if not CSV.exists():
+    CSV = AQUI.parent / "padron" / "padron_032.csv"
 H = {"apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Content-Type": "application/json"}
 USUARIO = "carga_inicial"
+
+
+class _Tee:
+    """Escribe en consola y en un log a la vez."""
+    def __init__(self, path):
+        self.f = open(path, "a", encoding="utf-8"); self.o = sys.__stdout__
+        self.f.write(f"\n===== {datetime.now():%Y-%m-%d %H:%M} =====\n")
+    def write(self, s):
+        self.o.write(s); self.f.write(s); self.f.flush()
+    def flush(self):
+        self.o.flush(); self.f.flush()
 
 
 def get_all(tabla, query):
@@ -42,9 +56,16 @@ def get_all(tabla, query):
 
 def post(tabla, filas, prefer="return=minimal"):
     for i in range(0, len(filas), 500):
-        r = requests.post(f"{SB_URL}/rest/v1/{tabla}", headers={**H, "Prefer": prefer}, data=json.dumps(filas[i:i + 500]), timeout=120)
-        if r.status_code >= 300:
-            raise RuntimeError(f"{tabla}: HTTP {r.status_code} {r.text[:400]}")
+        lote = filas[i:i + 500]
+        for intento in range(3):
+            try:
+                r = requests.post(f"{SB_URL}/rest/v1/{tabla}", headers={**H, "Prefer": prefer}, data=json.dumps(lote), timeout=180)
+                break
+            except requests.RequestException as e:
+                print(f"  {tabla} lote {i//500+1}: {e}; reintento…"); r = None
+        if r is None or r.status_code >= 300:
+            raise RuntimeError(f"{tabla} lote {i//500+1} (filas {i+1}-{i+len(lote)}): " + (f"HTTP {r.status_code} {r.text[:400]}" if r is not None else "sin respuesta"))
+        print(f"  {tabla}: {i+len(lote)}/{len(filas)}")
 
 
 def cargar_virgenes(existentes):
@@ -75,6 +96,7 @@ def cargar_virgenes(existentes):
 
 
 def main():
+    sys.stdout = _Tee(AQUI / "cargar_padron.log")
     if not SB_URL or not SB_KEY:
         sys.exit("Falta SUPABASE_URL / SUPABASE_SERVICE_KEY en sync\\.env")
     if not CSV.exists():
@@ -94,12 +116,13 @@ def main():
         if not pid:
             sin_prop.add(f["propietario"]); continue
         cat = f["categoria"].strip().upper()
-        if cat not in ("TORO", "VACA", "HEMBRA", "MACHO"):
+        if cat not in ("TORO", "VACA", "HEMBRA", "MACHO", "MIXTO"):
             sin_prop.add("CATEGORIA " + cat); continue
-        obs = f"Bolsa: {f['bolsa']}" if f.get("bolsa") else None
+        bolsa = (f.get("bolsa") or "CLASIFICAR").strip().upper()
+        obs = f"Bolsa: {bolsa}"
         nuevas.append({"numero": n, "estado": "activa", "propietario_id": pid, "categoria": cat,
                        "fecha_alta": f["fecha_alta"], "origen_alta": "padron_inicial",
-                       "procedencia_alta": f.get("procedencia") or None, "observaciones": obs,
+                       "procedencia_alta": f.get("procedencia") or None, "bolsa": bolsa,
                        "actualizado_por": USUARIO})
         movs.append({"caravana": n, "tipo": "alta", "fecha": f["fecha_alta"], "propietario_id": pid, "categoria": cat,
                      "origen_destino": f.get("procedencia") or None, "fuente": "padron_inicial",
@@ -110,8 +133,16 @@ def main():
     print(f"Filas en CSV: {len(filas)} · nuevas: {len(nuevas)} · ya existían: {omitidas}")
     if nuevas:
         post("caravanas", nuevas)
-        post("movimientos", movs)
-        print("Caravanas y movimientos cargados.")
+        print("Caravanas cargadas.")
+    # movimientos de alta para toda caravana del padrón inicial que todavía no lo tenga
+    con_mov = {m["caravana"] for m in get_all("movimientos", "select=caravana&tipo=eq.alta&fuente=eq.padron_inicial")}
+    del_padron = {c["numero"]: c for c in get_all("caravanas", "select=numero,propietario_id,categoria,fecha_alta,procedencia_alta,bolsa&origen_alta=eq.padron_inicial")}
+    faltan = [{"caravana": n, "tipo": "alta", "fecha": c["fecha_alta"], "propietario_id": c["propietario_id"], "categoria": c["categoria"],
+               "origen_destino": c["procedencia_alta"], "fuente": "padron_inicial", "observaciones": ("Bolsa: " + c["bolsa"]) if c.get("bolsa") else None, "usuario": USUARIO}
+              for n, c in del_padron.items() if n not in con_mov]
+    print(f"Movimientos de alta a completar: {len(faltan)}")
+    if faltan:
+        post("movimientos", faltan)
     r = requests.post(f"{SB_URL}/rest/v1/rpc/marcar_salidas", headers=H, data="{}", timeout=120)
     print("Salidas marcadas (ya vendidas o muertas según WinCampo):", r.text)
 
@@ -123,4 +154,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print("ERROR:", e)
+        raise

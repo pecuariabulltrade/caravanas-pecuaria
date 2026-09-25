@@ -68,6 +68,7 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
   <button data-t="consulta">Consulta</button>
   <button data-t="altam">Alta manual</button>
   <button data-t="bajam">Baja manual</button>
+  <button data-t="clasif">Clasificar</button>
   <button data-t="movs">Movimientos</button>
   <button data-t="config">Configuración</button>
 </nav>
@@ -151,7 +152,9 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
       <label class="f">hasta <input id="cRh" class="mono" maxlength="15"></label>
       <label class="f">Estado <select id="cEst"><option value="">Todos</option><option>virgen</option><option>activa</option><option>salida</option><option>baja</option><option>anulada</option></select></label>
       <label class="f">Propietario <select id="cProp"><option value="">Todos</option></select></label>
-      <label class="f">Categoría <select id="cCat"><option value="">Todas</option><option>TORO</option><option>VACA</option><option>HEMBRA</option><option>MACHO</option></select></label>
+      <label class="f">Categoría <select id="cCat"><option value="">Todas</option><option>TORO</option><option>VACA</option><option>HEMBRA</option><option>MACHO</option><option>MIXTO</option></select></label>
+      <label class="f">Tipo <select id="cTipo"><option value="">Todas</option><option value="electronica">Electrónica (032)</option><option value="visual">Visual</option></select></label>
+      <label class="f">Bolsa <input id="cBolsa" style="width:110px" placeholder="CLASIFICAR"></label>
       <label class="f">Alta desde <input type="date" id="cAd"></label>
       <label class="f">Alta hasta <input type="date" id="cAh"></label>
       <button class="b" id="cBuscar">Buscar</button>
@@ -175,12 +178,13 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
     <div class="row">
       <label class="f">Desde <input id="aRd" class="mono" maxlength="15"></label>
       <label class="f">Hasta <input id="aRh" class="mono" maxlength="15"></label>
-      <span class="muted">o pegá una lista (una por línea, o separadas por coma / espacio)</span>
+      <span class="muted">o pegá una lista (una por línea, o separadas por coma / espacio); admite caravanas visuales. Sin bolsa, entran como CLASIFICAR.</span>
     </div>
     <textarea id="aLista" rows="4" style="width:100%;margin-top:8px" class="mono" placeholder="032010044087925&#10;032010044087926"></textarea>
     <div class="row" style="margin-top:8px">
       <label class="f">Propietario <select id="aProp"></select></label>
-      <label class="f">Categoría <select id="aCat"><option>MACHO</option><option>HEMBRA</option><option>VACA</option><option>TORO</option></select></label>
+      <label class="f">Categoría <select id="aCat"><option>MACHO</option><option>HEMBRA</option><option>VACA</option><option>TORO</option><option>MIXTO</option></select></label>
+      <label class="f">Bolsa <input id="aBolsa" placeholder="CLASIFICAR" style="width:110px"></label>
       <label class="f">Fecha de alta <input type="date" id="aFecha"></label>
       <label class="f">DTE (opcional) <input id="aDte"></label>
       <label class="f">Procedencia (opcional) <input id="aProc" style="width:180px"></label>
@@ -214,7 +218,12 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
       <label class="f">Desde <input id="bRd" class="mono" maxlength="15"></label>
       <label class="f">Hasta <input id="bRh" class="mono" maxlength="15"></label>
     </div>
-    <textarea id="bLista" rows="4" style="width:100%;margin-top:8px" class="mono" placeholder="Lista de caravanas (opcional si usás rango)"></textarea>
+    <div class="row" style="margin-top:6px">
+      <label class="f">o por bolsa <input id="bBolsa" style="width:120px" placeholder="26-125"></label>
+      <button class="b s" id="bBolsaCargar">Traer caravanas de la bolsa</button>
+      <span class="muted" id="bBolsaInfo"></span>
+    </div>
+    <textarea id="bLista" rows="4" style="width:100%;margin-top:8px" class="mono" placeholder="Lista de caravanas (opcional si usás rango o bolsa)"></textarea>
     <div class="row" style="margin-top:8px">
       <label class="f">DTE de egreso <input id="bDte"></label>
       <label class="f">Fecha de baja <input type="date" id="bFecha"></label>
@@ -227,12 +236,40 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
   </div>
 </section>
 
+<!-- CLASIFICAR -->
+<section id="t-clasif" class="tab hidden">
+  <div class="card">
+    <h3>Asignar número de bolsa</h3>
+    <div class="row">
+      <label class="f">Rango desde <input id="kfRd" class="mono" maxlength="15"></label>
+      <label class="f">hasta <input id="kfRh" class="mono" maxlength="15"></label>
+      <label class="f">o desde un Excel (primera columna = caravanas) <input type="file" id="kfExcel" accept=".xlsx,.xls,.csv"></label>
+      <label class="f">o traer una bolsa existente <input id="kfDeBolsa" style="width:110px" placeholder="CLASIFICAR"></label>
+      <button class="b s" id="kfTraer">Traer</button>
+    </div>
+    <textarea id="kfLista" rows="5" style="width:100%;margin-top:8px" class="mono" placeholder="Lista de caravanas (una por línea o separadas por coma / espacio)"></textarea>
+    <div class="row" style="margin-top:8px">
+      <label class="f">Número de bolsa a asignar <input id="kfBolsa" style="width:140px" placeholder="26-130"></label>
+      <label class="f">Observación <input id="kfObs" style="width:220px"></label>
+      <button class="b" id="kfPrev">Vista previa</button>
+      <button class="b p" id="kfConf" disabled>Confirmar clasificación</button>
+      <span class="muted" id="kfInfo"></span>
+    </div>
+    <div id="kfPrevBox"></div>
+    <div class="tw" style="max-height:40vh;margin-top:8px"><table id="kfTabla"></table></div>
+  </div>
+  <div class="card">
+    <h3>Bolsas del padrón</h3>
+    <div id="kfBolsas" class="muted">Cargando…</div>
+  </div>
+</section>
+
 <!-- MOVIMIENTOS -->
 <section id="t-movs" class="tab hidden">
   <div class="card"><div class="row">
     <label class="f">Desde <input type="date" id="mDesde"></label>
     <label class="f">Hasta <input type="date" id="mHasta"></label>
-    <label class="f">Tipo <select id="mTipo"><option value="">Todos</option><option>alta</option><option>salida</option><option>baja</option><option>anulacion</option><option>reactivacion</option></select></label>
+    <label class="f">Tipo <select id="mTipo"><option value="">Todos</option><option>alta</option><option>salida</option><option>baja</option><option>anulacion</option><option>reactivacion</option><option>clasificacion</option></select></label>
     <label class="f">Propietario <select id="mProp"><option value="">Todos</option></select></label>
     <label class="f">DTE <input id="mDte"></label>
     <label class="f">Caravana <input id="mCar" class="mono"></label>
@@ -291,6 +328,7 @@ const $ = id => document.getElementById(id);
 const hoy = () => new Date().toISOString().slice(0,10);
 const diasAtras = n => new Date(Date.now()-n*864e5).toISOString().slice(0,10);
 const fmtF = d => d ? d.split('-').reverse().join('/') : '';
+const addDias = (d,n) => new Date(new Date(d+'T00:00:00').getTime()+n*864e5).toISOString().slice(0,10);
 const fmtTs = t => t ? new Date(t).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}) : '';
 const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const tag = s => `<span class="tag ${esc(s)}">${esc(SIT[s]||s)}</span>`;
@@ -310,9 +348,9 @@ function expandirRango(d,h){
 function numerosDe(rd, rh, lista){
   let n = limpiarNumeros(lista);
   if(rd && rh) n = n.concat(expandirRango(rd.trim(), rh.trim()));
-  n = [...new Set(n)];
-  const malos = n.filter(x=>!/^032\d{12}$/.test(x));
-  if(malos.length) throw new Error(`Números inválidos (15 dígitos, empiezan con 032): ${malos.slice(0,5).join(', ')}${malos.length>5?'…':''}`);
+  n = [...new Set(n.map(x=>x.toUpperCase()))];
+  const malos = n.filter(x=>!/^[A-Z0-9][A-Z0-9-]{2,24}$/.test(x));
+  if(malos.length) throw new Error(`Números inválidos: ${malos.slice(0,5).join(', ')}${malos.length>5?'…':''}`);
   if(!n.length) throw new Error('No hay caravanas para procesar');
   return n;
 }
@@ -348,7 +386,7 @@ async function iniciar(){
 }
 
 // ---------- TURNO ----------
-const TABS_CARGA = new Set(['ingresos','egresos','altam','bajam']);
+const TABS_CARGA = new Set(['ingresos','egresos','altam','bajam','clasif']);
 async function tomarTurno(){ try{ TURNO = await rpc('tomar_turno',{p_usuario:USER,p_liberar:false}); }catch(e){ toast(e.message);} pintarTurno(); }
 async function liberarTurno(){ try{ TURNO = await rpc('tomar_turno',{p_usuario:USER,p_liberar:true}); }catch(e){} pintarTurno(); }
 async function refrescarTurno(){ const {data} = await sb.from('bloqueo_edicion').select('*').eq('id',1).single(); TURNO=data; pintarTurno(); }
@@ -359,7 +397,7 @@ function pintarTurno(){
   if(tengoTurno()){ p.textContent='Turno de carga: vos'; p.className='pill ok'; b.textContent='Liberar turno'; }
   else if(turnoLibre()){ p.textContent='Turno de carga: libre'; p.className='pill'; b.textContent='Tomar turno'; }
   else { p.textContent='Turno de carga: '+TURNO.usuario; p.className='pill warn'; b.textContent='Tomar turno'; }
-  document.querySelectorAll('#iAlta,#eBaja,#cBaja,#aConf,#bConf,#vConf').forEach(x=>x.title = tengoTurno()?'':'Necesitás el turno de carga');
+  document.querySelectorAll('#iAlta,#eBaja,#cBaja,#aConf,#bConf,#vConf,#kfConf').forEach(x=>x.title = tengoTurno()?'':'Necesitás el turno de carga');
 }
 $('btnTurno').onclick = ()=> tengoTurno() ? liberarTurno() : tomarTurno();
 function exigirTurno(){ if(!tengoTurno()) throw new Error('Necesitás tomar el turno de carga (botón arriba a la derecha)'+(turnoLibre()?'':`; lo tiene ${TURNO.usuario}`)); }
@@ -398,7 +436,7 @@ function mostrarTab(t){
   document.querySelectorAll('.tab').forEach(s=>s.classList.toggle('hidden', s.id!=='t-'+t));
   $('side').classList.remove('on');
   if(TABS_CARGA.has(t) && turnoLibre()) tomarTurno();
-  ({inicio:cargarInicio, ingresos:cargarIngresos, egresos:cargarEgresos, consulta:cargarConsulta, movs:cargarMovs, config:cargarConfig, altam:cargarCompras})[t]?.();
+  ({inicio:cargarInicio, ingresos:cargarIngresos, egresos:cargarEgresos, consulta:cargarConsulta, movs:cargarMovs, config:cargarConfig, altam:cargarCompras, clasif:cargarClasif})[t]?.();
 }
 $('nav').onclick = e=>{ const b=e.target.closest('button'); if(b) mostrarTab(b.dataset.t); };
 
@@ -452,6 +490,7 @@ $('iAlta').onclick=()=>{
     <label class="f">Propietario de alta <select id="pProp">${PROPS.filter(p=>p.activo).map(p=>`<option value="${p.id}" ${propProp===p.id?'selected':''}>${esc(p.nombre)}</option>`).join('')}</select></label><br>
     <label class="f">Fecha de alta (cierre en SIGSA) <input type="date" id="pFecha" value="${hoy()}"></label><br>
     <label class="f">Procedencia (origen declarado en SIGSA) <input id="pProc" value="${esc(origs.length===1?origs[0]:'')}"></label><br>
+    <label class="f">Bolsa <input id="pBolsa" value="FEEDLOT"></label><br>
     <label class="f">Categoría <select id="pCat"><option value="">Según WinCampo (${esc(cats.join(', ')||'sin mapear')})</option><option>MACHO</option><option>HEMBRA</option><option>VACA</option><option>TORO</option></select></label><br>
     <label class="f">Observación <input id="pObs"></label><br>
     <div id="pMsg"></div><button class="b p" id="pOk">Confirmar alta</button> <button class="b" onclick="cerrarPanel()">Cancelar</button>`);
@@ -462,7 +501,7 @@ $('iAlta').onclick=()=>{
     const sinCat = rows.filter(r=>!(catFija||r.categoria)).length; if(sinCat) return msg('pMsg','err',`${sinCat} caravanas sin categoría mapeable; elegí una categoría fija`);
     $('pOk').disabled=true; let tot=0, om=[];
     try{ for(const [k,nums] of Object.entries(porCat)){ const [cat,tropa]=k.split('|');
-        const r=await rpc('alta_masiva',{p_numeros:nums,p_propietario_id:+$('pProp').value,p_categoria:cat,p_fecha_alta:$('pFecha').value,p_dte:dte,p_origen:'wincampo',p_fuente:'wincampo',p_usuario:USER,p_nro_tropa:tropa||null,p_compra_id:null,p_observaciones:$('pObs').value||null,p_procedencia:$('pProc').value.trim()||null});
+        const r=await rpc('alta_masiva',{p_numeros:nums,p_propietario_id:+$('pProp').value,p_categoria:cat,p_fecha_alta:$('pFecha').value,p_dte:dte,p_origen:'wincampo',p_fuente:'wincampo',p_usuario:USER,p_nro_tropa:tropa||null,p_compra_id:null,p_observaciones:$('pObs').value||null,p_procedencia:$('pProc').value.trim()||null,p_bolsa:$('pBolsa').value.trim()||'FEEDLOT'});
         tot+=r.total; om=om.concat(r.omitidas||[]); }
       toast(`${tot} caravanas dadas de alta${om.length?`, ${om.length} omitidas`:''}`,4000); cerrarPanel(); cargarIngresos(); contarPendientes();
     }catch(e){ msg('pMsg','err',e.message); $('pOk').disabled=false; }
@@ -526,31 +565,32 @@ function panelBaja(nums, o){
 
 // ---------- CONSULTA ----------
 async function cargarConsulta(){
-  let q=sb.from('caravanas').select('*, propietarios(nombre)').order('numero');
+  let q=sb.from('v_caravanas').select('*').order('numero');
   const n=$('cNum').value.trim(); if(n) q=q.ilike('numero',`%${n}%`);
+  if($('cTipo').value) q=q.eq('tipo',$('cTipo').value); if($('cBolsa').value.trim()) q=q.ilike('bolsa',$('cBolsa').value.trim());
   if($('cRd').value&&$('cRh').value) q=q.gte('numero',$('cRd').value.trim()).lte('numero',$('cRh').value.trim());
   if($('cEst').value) q=q.eq('estado',$('cEst').value); if($('cProp').value) q=q.eq('propietario_id',+$('cProp').value); if($('cCat').value) q=q.eq('categoria',$('cCat').value);
   if($('cAd').value) q=q.gte('fecha_alta',$('cAd').value); if($('cAh').value) q=q.lte('fecha_alta',$('cAh').value);
-  try{ state.con.rows=(await all(q)).map(r=>({...r,propietario:r.propietarios?.nombre||''})); }catch(e){ return toast(e.message); }
+  try{ state.con.rows=await all(q); }catch(e){ return toast(e.message); }
   state.con.sel.clear(); pintarConsulta();
 }
 function pintarConsulta(){
   const st=state.con, rows=st.rows;
-  let h=`<tr><th></th><th data-k="numero">Caravana</th><th data-k="estado">Estado</th><th data-k="propietario">Propietario</th><th data-k="categoria">Categoría</th><th data-k="fecha_alta">Alta</th><th>DTE alta</th><th>Procedencia</th><th>Origen</th><th data-k="fecha_salida">Salida</th><th data-k="fecha_baja">Baja</th><th>DTE baja</th><th>Destino</th><th>Obs.</th><th></th></tr>`;
-  rows.forEach(r=>{ h+=`<tr class="g-${r.estado}"><td>${['activa','salida'].includes(r.estado)?`<input type="checkbox" data-c="${r.numero}" ${st.sel.has(r.numero)?'checked':''}>`:''}</td><td class="mono">${r.numero}</td><td>${tag(r.estado)}</td><td>${esc(r.propietario)}</td><td>${esc(r.categoria||'')}</td><td>${fmtF(r.fecha_alta)}</td><td>${esc(r.dte_alta||'')}</td><td>${esc(r.procedencia_alta||'')}</td><td class="muted">${esc(r.origen_alta||'')}${r.nro_tropa_alta?' '+esc(r.nro_tropa_alta):''}</td><td>${fmtF(r.fecha_salida)}${r.motivo_salida?' '+esc(r.motivo_salida):''}</td><td>${fmtF(r.fecha_baja)}</td><td>${esc(r.dte_baja||'')}</td><td>${esc(r.destino_baja||'')}</td><td class="muted">${esc(r.observaciones||'')}</td><td><button class="b s" data-det="${r.numero}">Ver</button></td></tr>`; });
+  let h=`<tr><th></th><th data-k="numero">Caravana</th><th data-k="estado">Estado</th><th data-k="propietario">Propietario</th><th data-k="categoria">Categoría</th><th data-k="bolsa">Bolsa</th><th data-k="fecha_alta">Alta</th><th data-k="fecha_40_dias">40 días</th><th data-k="fecha_90_dias">90 días</th><th>DTE alta</th><th>Procedencia</th><th>Origen</th><th data-k="fecha_salida">Salida</th><th data-k="fecha_baja">Baja</th><th>DTE baja</th><th>Destino</th><th>Obs.</th><th></th></tr>`;
+  rows.forEach(r=>{ h+=`<tr class="g-${r.estado}"><td>${['activa','salida'].includes(r.estado)?`<input type="checkbox" data-c="${r.numero}" ${st.sel.has(r.numero)?'checked':''}>`:''}</td><td class="mono">${r.numero}${r.tipo==='visual'?' <span class="tag baja">visual</span>':''}</td><td>${tag(r.estado)}</td><td>${esc(r.propietario||'')}</td><td>${esc(r.categoria||'')}</td><td>${esc(r.bolsa||'')}</td><td>${fmtF(r.fecha_alta)}</td><td class="${r.fecha_40_dias&&r.fecha_40_dias<=hoy()?'':'muted'}">${fmtF(r.fecha_40_dias)}</td><td class="${r.fecha_90_dias&&r.fecha_90_dias<=hoy()?'':'muted'}">${fmtF(r.fecha_90_dias)}</td><td>${esc(r.dte_alta||'')}</td><td>${esc(r.procedencia_alta||'')}</td><td class="muted">${esc(r.origen_alta||'')}${r.nro_tropa_alta?' '+esc(r.nro_tropa_alta):''}</td><td>${fmtF(r.fecha_salida)}${r.motivo_salida?' '+esc(r.motivo_salida):''}</td><td>${fmtF(r.fecha_baja)}</td><td>${esc(r.dte_baja||'')}</td><td>${esc(r.destino_baja||'')}</td><td class="muted">${esc(r.observaciones||'')}</td><td><button class="b s" data-det="${r.numero}">Ver</button></td></tr>`; });
   $('cTabla').innerHTML=h; $('cInfo').textContent=`${rows.length} caravanas`; contarSel('con','cCount','cBaja');
 }
 $('cTabla').onclick = e=>{ const th=e.target.closest('th[data-k]'); if(th){ sortTable($('cTabla'),state.con.rows,th.dataset.k); pintarConsulta(); } const b=e.target.closest('button[data-det]'); if(b) detalle(b.dataset.det); };
 $('cTabla').onchange = e=>{ const c=e.target; if(c.dataset.c){ c.checked?state.con.sel.add(c.dataset.c):state.con.sel.delete(c.dataset.c); contarSel('con','cCount','cBaja'); } };
 $('cBuscar').onclick=cargarConsulta; $('cSelTodo').onclick=()=>{state.con.rows.filter(r=>['activa','salida'].includes(r.estado)).forEach(r=>state.con.sel.add(r.numero));pintarConsulta();}; $('cSelNada').onclick=()=>{state.con.sel.clear();pintarConsulta();};
-$('cExcel').onclick=()=>exportXlsx(`caravanas_${hoy()}.xlsx`,{Caravanas:state.con.rows.map(({propietarios,...r})=>r)});
+$('cExcel').onclick=()=>exportXlsx(`caravanas_${hoy()}.xlsx`,{Caravanas:state.con.rows});
 $('cBaja').onclick=()=>{ try{ exigirTurno(); }catch(e){ return toast(e.message,4000); } panelBaja([...state.con.sel],{fecha:hoy(),destino:'',fuente:'manual',permitirActivas:true,nota:'Baja manual desde Consulta (incluye activas)',despues:cargarConsulta}); };
 async function detalle(num){
   const [{data:c},{data:m},{data:wi},{data:we}] = await Promise.all([sb.from('caravanas').select('*, propietarios(nombre)').eq('numero',num).single(),
     sb.from('movimientos').select('*, propietarios(nombre)').eq('caravana',num).order('id'), sb.from('wc_ingresos').select('*').eq('caravana',num).order('fecha_ingreso'), sb.from('wc_egresos').select('*').eq('caravana',num).order('fecha_egreso')]);
   const puedeEx = tengoTurno();
   modal(`<h2 class="mono">${num} ${tag(c.estado)}</h2>
-    <p>Propietario: <b>${esc(c.propietarios?.nombre||'—')}</b> · Categoría: <b>${esc(c.categoria||'—')}</b> · Alta: ${fmtF(c.fecha_alta)} ${esc(c.dte_alta||'')} · procedencia ${esc(c.procedencia_alta||'—')} (${esc(c.origen_alta||'')})<br>
+    <p>${c.tipo==='visual'?'Caravana visual':'Caravana electrónica'} · Bolsa: <b>${esc(c.bolsa||'—')}</b><br>Propietario: <b>${esc(c.propietarios?.nombre||'—')}</b> · Categoría: <b>${esc(c.categoria||'—')}</b> · Alta: ${fmtF(c.fecha_alta)} ${esc(c.dte_alta||'')} · procedencia ${esc(c.procedencia_alta||'—')} (${esc(c.origen_alta||'')})${c.fecha_alta?` · 40 días: ${fmtF(addDias(c.fecha_alta,40))} · 90 días: ${fmtF(addDias(c.fecha_alta,90))}`:''}<br>
     Salida: ${fmtF(c.fecha_salida)} ${esc(c.motivo_salida||'')} ${esc(c.destino_salida||'')} · Baja: ${fmtF(c.fecha_baja)} ${esc(c.dte_baja||'')} ${esc(c.destino_baja||'')}<br>Obs.: ${esc(c.observaciones||'')}</p>
     <h3>Movimientos</h3><table><tr><th>Fecha</th><th>Tipo</th><th>DTE</th><th>Propietario</th><th>Cat.</th><th>Origen/Destino</th><th>Tropa</th><th>Fuente</th><th>Usuario</th><th>Obs.</th></tr>${(m||[]).map(x=>`<tr><td>${fmtF(x.fecha)}</td><td>${esc(x.tipo)}</td><td>${esc(x.dte||'')}</td><td>${esc(x.propietarios?.nombre||'')}</td><td>${esc(x.categoria||'')}</td><td>${esc(x.origen_destino||'')}</td><td>${esc(x.nro_tropa||'')}</td><td>${esc(x.fuente)}</td><td>${esc(x.usuario||'')}</td><td>${esc(x.observaciones||'')}</td></tr>`).join('')}</table>
     <h3>En WinCampo</h3><table><tr><th>Mov.</th><th>Fecha</th><th>Tropa</th><th>Origen / destino</th><th>Cat.</th><th>Motivo</th></tr>${(wi||[]).map(x=>`<tr><td>Ingreso</td><td>${fmtF(x.fecha_ingreso)}</td><td>${esc(x.nro_tropa||'')}</td><td>${esc(x.origen||'')}</td><td>${esc(x.categoria_wc||'')}</td><td>${x.es_traslado?'traslado':''}</td></tr>`).join('')}${(we||[]).map(x=>`<tr><td>Egreso</td><td>${fmtF(x.fecha_egreso)}</td><td>${esc(x.nro_tropa||'')}</td><td>${esc(x.destino||'')}</td><td>${esc(x.categoria_wc||'')}</td><td>${esc(x.motivo||'')}</td></tr>`).join('')}</table>
@@ -573,7 +613,7 @@ $('aPrev').onclick = async ()=>{
 };
 $('aConf').onclick = async ()=>{
   try{ exigirTurno(); $('aConf').disabled=true;
-    const r=await rpc('alta_masiva',{p_numeros:state.altaPrev,p_propietario_id:+$('aProp').value,p_categoria:$('aCat').value,p_fecha_alta:$('aFecha').value,p_dte:$('aDte').value||null,p_origen:'manual',p_fuente:'manual',p_usuario:USER,p_nro_tropa:null,p_compra_id:null,p_observaciones:$('aObs').value||null,p_procedencia:$('aProc').value.trim()||null});
+    const r=await rpc('alta_masiva',{p_numeros:state.altaPrev,p_propietario_id:+$('aProp').value,p_categoria:$('aCat').value,p_fecha_alta:$('aFecha').value,p_dte:$('aDte').value||null,p_origen:'manual',p_fuente:'manual',p_usuario:USER,p_nro_tropa:null,p_compra_id:null,p_observaciones:$('aObs').value||null,p_procedencia:$('aProc').value.trim()||null,p_bolsa:$('aBolsa').value.trim()||null});
     msg('aPrevBox','ok',`Alta confirmada: ${r.total} caravanas (${r.nuevas} nuevas, ${r.virgenes_usadas} vírgenes)`); $('aLista').value=''; $('aRd').value=$('aRh').value=''; state.altaPrev=null;
   }catch(e){ msg('aPrevBox','err',e.message); $('aConf').disabled=false; }
 };
@@ -594,6 +634,12 @@ async function cargarCompras(){
 }
 
 // ---------- BAJA MANUAL ----------
+$('bBolsaCargar').onclick = async ()=>{
+  const b=$('bBolsa').value.trim().toUpperCase(); if(!b) return toast('Escribí el número de bolsa');
+  try{ const rows=await all(sb.from('caravanas').select('numero,estado').eq('bolsa',b).in('estado',['activa','salida']).order('numero'));
+    $('bLista').value=rows.map(r=>r.numero).join('\n'); $('bBolsaInfo').textContent=`${rows.length} caravanas en la bolsa ${b} (activas o con salida)`; $('bPrev').click();
+  }catch(e){ toast(e.message); }
+};
 $('bPrev').onclick = async ()=>{
   try{ const nums=numerosDe($('bRd').value,$('bRh').value,$('bLista').value);
     const ex = await all(sb.from('caravanas').select('numero,estado').in('numero',nums)); const est=Object.fromEntries(ex.map(r=>[r.numero,r.estado]));
@@ -607,6 +653,46 @@ $('bConf').onclick = async ()=>{
     const r=await rpc('baja_masiva',{p_numeros:state.bajaPrev,p_fecha_baja:$('bFecha').value,p_dte:$('bDte').value.trim(),p_destino:$('bDest').value.trim(),p_fuente:'manual',p_usuario:USER,p_permitir_activas:true,p_observaciones:$('bObs').value||null});
     msg('bPrevBox','ok',`Baja confirmada: ${r.bajas} caravanas`); $('bLista').value=''; $('bRd').value=$('bRh').value=''; state.bajaPrev=null; contarPendientes();
   }catch(e){ msg('bPrevBox','err',e.message); $('bConf').disabled=false; }
+};
+
+// ---------- CLASIFICAR ----------
+state.clasifPrev=null;
+async function cargarClasif(){
+  try{ const rows=await all(sb.from('caravanas').select('bolsa,estado').in('estado',['activa','salida']));
+    const c={}; rows.forEach(r=>{ const b=r.bolsa||'—'; c[b]=(c[b]||0)+1; });
+    const ent=Object.entries(c).sort((a,b)=>a[0]==='CLASIFICAR'?-1:b[0]==='CLASIFICAR'?1:a[0].localeCompare(b[0]));
+    $('kfBolsas').innerHTML=`<table><tr><th>Bolsa</th><th>Caravanas activas / con salida</th><th></th></tr>`+ent.map(([b,k])=>`<tr><td><b>${esc(b)}</b></td><td>${k}</td><td><button class="b s" data-b="${esc(b)}">Traer</button></td></tr>`).join('')+'</table>';
+    $('kfBolsas').onclick=e=>{ const x=e.target.closest('button[data-b]'); if(x){ $('kfDeBolsa').value=x.dataset.b; $('kfTraer').click(); } };
+  }catch(e){ $('kfBolsas').textContent=e.message; }
+}
+$('kfTraer').onclick = async ()=>{
+  const b=$('kfDeBolsa').value.trim().toUpperCase(); if(!b) return toast('Escribí la bolsa a traer');
+  try{ const rows=await all(sb.from('caravanas').select('numero').eq('bolsa',b).in('estado',['activa','salida']).order('numero'));
+    $('kfLista').value=rows.map(r=>r.numero).join('\n'); $('kfInfo').textContent=`${rows.length} caravanas de la bolsa ${b}`; }catch(e){ toast(e.message); }
+};
+$('kfExcel').onchange = e=>{
+  const f=e.target.files[0]; if(!f) return; const rd=new FileReader();
+  rd.onload=ev=>{ try{ const wb=XLSX.read(ev.target.result,{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]]; const rows=XLSX.utils.sheet_to_json(ws,{header:1});
+      const nums=rows.map(r=>String(r[0]??'').trim()).filter(x=>/^[A-Za-z0-9][A-Za-z0-9-]{2,24}$/.test(x)&&!/^caravana/i.test(x));
+      $('kfLista').value=nums.join('\n'); $('kfInfo').textContent=`${nums.length} caravanas leídas de ${f.name}`; }catch(err){ toast('No pude leer el Excel: '+err.message); } };
+  rd.readAsArrayBuffer(f);
+};
+$('kfPrev').onclick = async ()=>{
+  try{ const nums=numerosDe($('kfRd').value,$('kfRh').value,$('kfLista').value);
+    const ex=await all(sb.from('v_caravanas').select('numero,estado,bolsa,propietario,categoria').in('numero',nums)); const m=Object.fromEntries(ex.map(r=>[r.numero,r]));
+    const ok=nums.filter(x=>m[x]&&['activa','salida'].includes(m[x].estado)), no=nums.filter(x=>!ok.includes(x));
+    state.clasifPrev=ok;
+    $('kfPrevBox').innerHTML=`<div class="msg ${no.length?'warn':'ok'}">${ok.length} caravanas se clasifican; ${no.length} se omiten${no.length?': '+esc(no.slice(0,10).map(x=>x+' ('+(m[x]?m[x].estado:'no existe')+')').join(', '))+(no.length>10?'…':''):''}</div>`;
+    $('kfTabla').innerHTML=`<tr><th>Caravana</th><th>Estado</th><th>Bolsa actual</th><th>Propietario</th><th>Categoría</th></tr>`+ok.map(x=>`<tr><td class="mono">${x}</td><td>${tag(m[x].estado)}</td><td>${esc(m[x].bolsa||'')}</td><td>${esc(m[x].propietario||'')}</td><td>${esc(m[x].categoria||'')}</td></tr>`).join('');
+    $('kfConf').disabled=!ok.length;
+  }catch(e){ msg('kfPrevBox','err',e.message); $('kfConf').disabled=true; }
+};
+$('kfConf').onclick = async ()=>{
+  try{ exigirTurno(); const b=$('kfBolsa').value.trim().toUpperCase(); if(!b) throw new Error('Indicá el número de bolsa a asignar');
+    if(!confirm(`¿Asignar la bolsa ${b} a ${state.clasifPrev.length} caravanas?`)) return; $('kfConf').disabled=true;
+    const r=await rpc('clasificar_masiva',{p_numeros:state.clasifPrev,p_bolsa:b,p_usuario:USER,p_observaciones:$('kfObs').value||null});
+    msg('kfPrevBox','ok',`${r.clasificadas} caravanas pasaron a la bolsa ${r.bolsa}${r.omitidas?.length?`; ${r.omitidas.length} omitidas`:''}`); $('kfLista').value=''; $('kfRd').value=$('kfRh').value=''; $('kfTabla').innerHTML=''; state.clasifPrev=null; cargarClasif();
+  }catch(e){ msg('kfPrevBox','err',e.message); $('kfConf').disabled=false; }
 };
 
 // ---------- MOVIMIENTOS ----------
