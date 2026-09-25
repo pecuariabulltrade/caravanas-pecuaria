@@ -413,12 +413,13 @@ async function iniciar(){
   $('iDesde').value=diasAtras(60); $('iHasta').value=hoy(); $('eDesde').value=diasAtras(120); $('eHasta').value=hoy(); $('mDesde').value=diasAtras(30); $('mHasta').value=hoy();
   await Promise.all([refrescarTurno(), refrescarSync(), contarPendientes()]);
   mostrarTab('inicio');
-  setInterval(()=>{ refrescarSync(); if(TURNO?.usuario===USER) tomarTurno(); else refrescarTurno(); }, 60000);
+  setInterval(()=>{ refrescarSync(); if(TURNO?.usuario===USER && Date.now()-ULTIMA_ACTIVIDAD < 3*60000) tomarTurno(); else refrescarTurno(); }, 60000);
 }
 
 // ---------- TURNO ----------
+let ULTIMA_ACTIVIDAD=Date.now(); ['mousedown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,()=>{ ULTIMA_ACTIVIDAD=Date.now(); },{passive:true}));
 const TABS_CARGA = new Set(['ingresos','egresos','altam','bajam','clasif']);
-async function tomarTurno(){ try{ TURNO = await rpc('tomar_turno',{p_usuario:USER,p_liberar:false}); }catch(e){ toast(e.message);} pintarTurno(); }
+async function tomarTurno(){ try{ TURNO = await rpc('tomar_turno',{p_usuario:USER,p_liberar:false}); if(TURNO?.usuario!==USER) toast(`El turno lo tiene ${TURNO?.usuario}; queda libre a los 15 minutos sin actividad o cuando lo libere`,5000); }catch(e){ toast(e.message);} pintarTurno(); }
 async function liberarTurno(){ try{ TURNO = await rpc('tomar_turno',{p_usuario:USER,p_liberar:true}); }catch(e){} pintarTurno(); }
 async function refrescarTurno(){ const {data} = await sb.from('bloqueo_edicion').select('*').eq('id',1).single(); TURNO=data; pintarTurno(); }
 function tengoTurno(){ return TURNO?.usuario===USER && (Date.now()-new Date(TURNO.ultima_actividad).getTime()) < 15*60000; }
@@ -427,7 +428,7 @@ function pintarTurno(){
   const p=$('pTurno'), b=$('btnTurno');
   if(tengoTurno()){ p.textContent='Turno de carga: vos'; p.className='pill ok'; b.textContent='Liberar turno'; }
   else if(turnoLibre()){ p.textContent='Turno de carga: libre'; p.className='pill'; b.textContent='Tomar turno'; }
-  else { p.textContent='Turno de carga: '+TURNO.usuario; p.className='pill warn'; b.textContent='Tomar turno'; }
+  else { const min=Math.round((Date.now()-new Date(TURNO.ultima_actividad).getTime())/60000); p.textContent=`Turno de carga: ${TURNO.usuario} (activo hace ${min} min; se libera a los 15 min sin actividad)`; p.className='pill warn'; b.textContent='Tomar turno'; }
   document.querySelectorAll('#iAlta,#eBaja,#cBaja,#aConf,#aConfDdjj,#bConf,#vConf,#kfConf').forEach(x=>x.title = tengoTurno()?'':'Necesitás el turno de carga');
 }
 $('btnTurno').onclick = ()=> tengoTurno() ? liberarTurno() : tomarTurno();
