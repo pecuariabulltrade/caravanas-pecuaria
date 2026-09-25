@@ -1,0 +1,9 @@
+.env
+sync/.env
+__pycache__/
+*.log
+tools/explor/
+tools/explor2/
+tools/explor3/
+tools/*_log.txt
+padron/

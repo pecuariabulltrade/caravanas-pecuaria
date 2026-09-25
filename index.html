@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Caravanas Pecuaria</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--ink:#1f2a1f;--bg:#f4f6f2;--card:#fff;--line:#d9dfd4;--green:#2e7d32;--green-l:#e3f2e4;--amber:#b26a00;--amber-l:#fff3dc;--red:#b3261e;--red-l:#fde7e5;--grey:#6b756b;--grey-l:#eceeea;--blue:#1e5aa8;--blue-l:#e4edf9}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
+header{background:var(--ink);color:#fff;display:flex;align-items:center;gap:14px;padding:8px 16px;flex-wrap:wrap}
+header h1{font-size:17px;margin:0 12px 0 0;font-weight:600}
+header .sp{flex:1}header .pill{background:#334233;border-radius:14px;padding:3px 10px;font-size:12px}
+header .pill.warn{background:#7a4b00}header .pill.ok{background:#2e5d32}
+nav{display:flex;gap:2px;background:#2b382b;padding:0 12px;flex-wrap:wrap}
+nav button{background:none;border:0;color:#cfd8cf;padding:10px 14px;cursor:pointer;font-size:14px;border-bottom:3px solid transparent}
+nav button.on{color:#fff;border-bottom-color:#9ccc65}nav button .n{background:#9ccc65;color:#1f2a1f;border-radius:10px;padding:0 6px;font-size:11px;margin-left:5px}
+main{padding:16px;max-width:1500px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}.row>*{min-width:0}
+label.f{display:flex;flex-direction:column;font-size:12px;color:var(--grey);gap:3px}
+input,select,textarea{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:#fff;color:var(--ink)}
+input[type=checkbox]{width:16px;height:16px}
+button.b{font:inherit;padding:7px 14px;border-radius:5px;border:1px solid var(--line);background:#fff;cursor:pointer}
+button.b.p{background:var(--green);color:#fff;border-color:var(--green)}button.b.d{background:var(--red);color:#fff;border-color:var(--red)}
+button.b.s{padding:3px 8px;font-size:12px}button.b:disabled{opacity:.5;cursor:default}
+table{border-collapse:collapse;width:100%;font-size:13px}th,td{border-bottom:1px solid var(--line);padding:5px 7px;text-align:left;white-space:nowrap}
+th{background:var(--grey-l);position:sticky;top:0;font-weight:600;cursor:pointer}tr:hover td{background:#fafcf8}
+.tw{overflow:auto;max-height:62vh;border:1px solid var(--line);border-radius:6px}
+.tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600}
+.tag.activa,.tag.en_padron,.tag.ok{background:var(--green-l);color:var(--green)}
+.tag.virgen,.tag.pendiente,.tag.pendiente_dte{background:var(--blue-l);color:var(--blue)}
+.tag.salida,.tag.revisar,.tag.corriendo{background:var(--amber-l);color:var(--amber)}
+.tag.baja,.tag.dada_de_baja{background:var(--grey-l);color:var(--grey)}
+.tag.anulada,.tag.sin_alta,.tag.error{background:var(--red-l);color:var(--red)}
+tr.g-en_padron td{background:#f1f8f1}tr.g-revisar td{background:#fff8e8}tr.g-sin_alta td{background:#fdf0ef}tr.g-dada_de_baja td{color:var(--grey)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px}.kpi b{font-size:26px;display:block}.kpi span{color:var(--grey);font-size:12px}
+.side{position:fixed;right:0;top:0;height:100%;width:380px;background:#fff;border-left:1px solid var(--line);box-shadow:-4px 0 16px rgba(0,0,0,.08);padding:16px;overflow:auto;z-index:20;display:none}
+.side.on{display:block}.side h3{margin-top:0}
+.msg{padding:8px 12px;border-radius:6px;margin:8px 0;font-size:13px}.msg.ok{background:var(--green-l);color:var(--green)}.msg.err{background:var(--red-l);color:var(--red)}.msg.warn{background:var(--amber-l);color:var(--amber)}
+.muted{color:var(--grey);font-size:12px}.mono{font-family:ui-monospace,Consolas,monospace}
+#login{max-width:340px;margin:80px auto}
+.tropa-h td{background:#e9efe6;font-weight:600}
+.hidden{display:none}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:30}.modal.on{display:flex}
+.modal .box{background:#fff;border-radius:8px;padding:18px;width:min(760px,95vw);max-height:90vh;overflow:auto}
+h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:6px;z-index:40;display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>Caravanas Pecuaria</h1>
+  <span class="pill" id="pSync">Sincronización: —</span>
+  <button class="b s" id="btnRefrescar" title="Pide al script de la oficina que cargue todo lo que hay en WinCampo hasta ahora">Refrescar WinCampo</button>
+  <span class="sp"></span>
+  <span class="pill" id="pTurno">Turno: —</span>
+  <button class="b s" id="btnTurno">Tomar turno</button>
+  <span class="pill" id="pUser"></span>
+  <button class="b s" id="btnLogout">Salir</button>
+</header>
+<nav id="nav">
+  <button data-t="inicio" class="on">Inicio</button>
+  <button data-t="ingresos">Ingresos <span class="n" id="nIng"></span></button>
+  <button data-t="egresos">Egresos <span class="n" id="nEgr"></span></button>
+  <button data-t="consulta">Consulta</button>
+  <button data-t="altam">Alta manual</button>
+  <button data-t="bajam">Baja manual</button>
+  <button data-t="movs">Movimientos</button>
+  <button data-t="config">Configuración</button>
+</nav>
+<main id="main">
+
+<div id="login" class="card">
+  <h2>Ingresar</h2>
+  <label class="f">Email <input id="lEmail" type="email" autocomplete="username"></label><br>
+  <label class="f">Contraseña <input id="lPass" type="password" autocomplete="current-password"></label><br>
+  <button class="b p" id="lBtn">Entrar</button>
+  <div id="lMsg"></div>
+</div>
+
+<!-- INICIO -->
+<section id="t-inicio" class="tab hidden">
+  <div class="kpis" id="kpis"></div>
+  <div class="card"><h3>Caravanas por propietario</h3><div id="resumenProp"></div></div>
+  <div class="card"><h3>Últimas sincronizaciones</h3><div id="syncLog"></div></div>
+</section>
+
+<!-- INGRESOS -->
+<section id="t-ingresos" class="tab hidden">
+  <div class="card">
+    <div class="row">
+      <label class="f">Desde <input type="date" id="iDesde"></label>
+      <label class="f">Hasta <input type="date" id="iHasta"></label>
+      <label class="f">Tropa <input id="iTropa" placeholder="PEG.HUI.…"></label>
+      <label class="f">Origen <input id="iOrigen"></label>
+      <label class="f">Categoría <select id="iCat"><option value="">Todas</option><option>TORO</option><option>VACA</option><option>HEMBRA</option><option>MACHO</option></select></label>
+      <label class="f">Situación <select id="iSit"><option value="">Todas</option><option value="pendiente">Pendiente de alta</option><option value="en_padron">Ya en el padrón</option><option value="revisar">Revisar (salida/baja)</option></select></label>
+      <button class="b" id="iBuscar">Buscar</button>
+      <span class="muted" id="iInfo"></span>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label class="f">Seleccionar rango desde <input id="iRd" class="mono" maxlength="15"></label>
+      <label class="f">hasta <input id="iRh" class="mono" maxlength="15"></label>
+      <button class="b s" id="iSelRango">Marcar rango</button>
+      <button class="b s" id="iSelTodo">Marcar todas las pendientes filtradas</button>
+      <button class="b s" id="iSelNada">Desmarcar</button>
+      <span class="sp"></span>
+      <span id="iCount" class="muted">0 seleccionadas</span>
+      <button class="b p" id="iAlta" disabled>Dar de alta seleccionadas…</button>
+    </div>
+  </div>
+  <div class="tw"><table id="iTabla"></table></div>
+</section>
+
+<!-- EGRESOS -->
+<section id="t-egresos" class="tab hidden">
+  <div class="card">
+    <div class="row">
+      <label class="f">Salida desde <input type="date" id="eDesde"></label>
+      <label class="f">Hasta <input type="date" id="eHasta"></label>
+      <label class="f">Tropa <input id="eTropa"></label>
+      <label class="f">Propietario <select id="eProp"><option value="">Todos</option></select></label>
+      <label class="f">Motivo <select id="eMot"><option value="">Todos</option><option value="venta">Venta</option><option value="muerte">Muerte</option></select></label>
+      <label class="f">Situación <select id="eSit"><option value="pendiente_dte">Pendiente de DTE</option><option value="sin_alta">Salió sin alta</option><option value="dada_de_baja">Ya dada de baja</option><option value="">Todas</option></select></label>
+      <button class="b" id="eBuscar">Buscar</button>
+      <span class="muted" id="eInfo"></span>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label class="f">Seleccionar rango desde <input id="eRd" class="mono" maxlength="15"></label>
+      <label class="f">hasta <input id="eRh" class="mono" maxlength="15"></label>
+      <button class="b s" id="eSelRango">Marcar rango</button>
+      <button class="b s" id="eSelTodo">Marcar todas las pendientes filtradas</button>
+      <button class="b s" id="eSelNada">Desmarcar</button>
+      <span class="sp"></span>
+      <span id="eCount" class="muted">0 seleccionadas</span>
+      <button class="b p" id="eBaja" disabled>Dar de baja seleccionadas…</button>
+    </div>
+  </div>
+  <div class="tw"><table id="eTabla"></table></div>
+</section>
+
+<!-- CONSULTA -->
+<section id="t-consulta" class="tab hidden">
+  <div class="card">
+    <div class="row">
+      <label class="f">Número (o parte) <input id="cNum" class="mono"></label>
+      <label class="f">Rango desde <input id="cRd" class="mono" maxlength="15"></label>
+      <label class="f">hasta <input id="cRh" class="mono" maxlength="15"></label>
+      <label class="f">Estado <select id="cEst"><option value="">Todos</option><option>virgen</option><option>activa</option><option>salida</option><option>baja</option><option>anulada</option></select></label>
+      <label class="f">Propietario <select id="cProp"><option value="">Todos</option></select></label>
+      <label class="f">Categoría <select id="cCat"><option value="">Todas</option><option>TORO</option><option>VACA</option><option>HEMBRA</option><option>MACHO</option></select></label>
+      <label class="f">Alta desde <input type="date" id="cAd"></label>
+      <label class="f">Alta hasta <input type="date" id="cAh"></label>
+      <button class="b" id="cBuscar">Buscar</button>
+      <button class="b" id="cExcel">Exportar Excel</button>
+      <span class="muted" id="cInfo"></span>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="b s" id="cSelTodo">Marcar todo lo filtrado</button>
+      <button class="b s" id="cSelNada">Desmarcar</button>
+      <span class="sp"></span><span id="cCount" class="muted">0 seleccionadas</span>
+      <button class="b p" id="cBaja" disabled>Dar de baja seleccionadas…</button>
+    </div>
+  </div>
+  <div class="tw"><table id="cTabla"></table></div>
+</section>
+
+<!-- ALTA MANUAL -->
+<section id="t-altam" class="tab hidden">
+  <div class="card">
+    <h3>Alta por rango o lista</h3>
+    <div class="row">
+      <label class="f">Desde <input id="aRd" class="mono" maxlength="15"></label>
+      <label class="f">Hasta <input id="aRh" class="mono" maxlength="15"></label>
+      <span class="muted">o pegá una lista (una por línea, o separadas por coma / espacio)</span>
+    </div>
+    <textarea id="aLista" rows="4" style="width:100%;margin-top:8px" class="mono" placeholder="032010044087925&#10;032010044087926"></textarea>
+    <div class="row" style="margin-top:8px">
+      <label class="f">Propietario <select id="aProp"></select></label>
+      <label class="f">Categoría <select id="aCat"><option>MACHO</option><option>HEMBRA</option><option>VACA</option><option>TORO</option></select></label>
+      <label class="f">Fecha de alta <input type="date" id="aFecha"></label>
+      <label class="f">DTE (opcional) <input id="aDte"></label>
+      <label class="f">Procedencia (opcional) <input id="aProc" style="width:180px"></label>
+      <label class="f">Observación <input id="aObs" style="width:220px"></label>
+      <button class="b" id="aPrev">Vista previa</button>
+      <button class="b p" id="aConf" disabled>Confirmar alta</button>
+    </div>
+    <div id="aPrevBox"></div>
+  </div>
+  <div class="card">
+    <h3>Alta con vírgenes</h3>
+    <div class="row">
+      <label class="f">Cantidad <input type="number" id="vCant" min="1" style="width:90px"></label>
+      <label class="f">De la compra <select id="vCompra"><option value="">Primeras disponibles</option></select></label>
+      <label class="f">Propietario <select id="vProp"></select></label>
+      <label class="f">Categoría <select id="vCat"><option>MACHO</option><option>HEMBRA</option><option>VACA</option><option>TORO</option></select></label>
+      <label class="f">Fecha de alta <input type="date" id="vFecha"></label>
+      <label class="f">DTE (opcional) <input id="vDte"></label>
+      <button class="b p" id="vConf">Asignar vírgenes</button>
+      <span class="muted" id="vInfo"></span>
+    </div>
+    <div id="vBox"></div>
+  </div>
+</section>
+
+<!-- BAJA MANUAL -->
+<section id="t-bajam" class="tab hidden">
+  <div class="card">
+    <h3>Baja por rango o lista</h3>
+    <div class="row">
+      <label class="f">Desde <input id="bRd" class="mono" maxlength="15"></label>
+      <label class="f">Hasta <input id="bRh" class="mono" maxlength="15"></label>
+    </div>
+    <textarea id="bLista" rows="4" style="width:100%;margin-top:8px" class="mono" placeholder="Lista de caravanas (opcional si usás rango)"></textarea>
+    <div class="row" style="margin-top:8px">
+      <label class="f">DTE de egreso <input id="bDte"></label>
+      <label class="f">Fecha de baja <input type="date" id="bFecha"></label>
+      <label class="f">Destino <input id="bDest" style="width:220px"></label>
+      <label class="f">Observación <input id="bObs" style="width:220px"></label>
+      <button class="b" id="bPrev">Vista previa</button>
+      <button class="b d" id="bConf" disabled>Confirmar baja</button>
+    </div>
+    <div id="bPrevBox"></div>
+  </div>
+</section>
+
+<!-- MOVIMIENTOS -->
+<section id="t-movs" class="tab hidden">
+  <div class="card"><div class="row">
+    <label class="f">Desde <input type="date" id="mDesde"></label>
+    <label class="f">Hasta <input type="date" id="mHasta"></label>
+    <label class="f">Tipo <select id="mTipo"><option value="">Todos</option><option>alta</option><option>salida</option><option>baja</option><option>anulacion</option><option>reactivacion</option></select></label>
+    <label class="f">Propietario <select id="mProp"><option value="">Todos</option></select></label>
+    <label class="f">DTE <input id="mDte"></label>
+    <label class="f">Caravana <input id="mCar" class="mono"></label>
+    <label class="f">Fuente <select id="mFuente"><option value="">Todas</option><option>wincampo</option><option>manual</option><option>padron_inicial</option></select></label>
+    <button class="b" id="mBuscar">Buscar</button>
+    <button class="b" id="mExcel">Exportar Excel</button>
+    <span class="muted" id="mInfo"></span>
+  </div></div>
+  <div class="tw"><table id="mTabla"></table></div>
+</section>
+
+<!-- CONFIG -->
+<section id="t-config" class="tab hidden">
+  <div class="card">
+    <h3>Propietarios</h3>
+    <div id="propBox"></div>
+  </div>
+  <div class="card">
+    <h3>Compras de caravanas vírgenes</h3>
+    <div class="row">
+      <label class="f">Fecha <input type="date" id="kFecha"></label>
+      <label class="f">Proveedor <input id="kProv" value="SENASA"></label>
+      <label class="f">Desde <input id="kRd" class="mono" maxlength="15"></label>
+      <label class="f">Hasta <input id="kRh" class="mono" maxlength="15"></label>
+      <label class="f">Comprobante <input id="kComp"></label>
+      <button class="b p" id="kConf">Registrar compra</button>
+    </div>
+    <div id="kBox"></div>
+    <div id="comprasTabla" style="margin-top:10px"></div>
+  </div>
+  <div class="card">
+    <h3>Backup</h3>
+    <button class="b" id="bkExcel">Descargar backup (Excel)</button>
+    <span class="muted">Todas las tablas en un archivo. La base sigue siendo Supabase; el Excel es una copia.</span>
+  </div>
+  <div class="card">
+    <h3>Sincronizaciones con WinCampo</h3>
+    <div id="syncLog2"></div>
+  </div>
+</section>
+</main>
+
+<div class="side" id="side"></div>
+<div class="modal" id="modal"><div class="box" id="modalBox"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// CONFIG — completar con el proyecto Supabase "caravanas-pecuaria"
+// ============================================================
+const SUPABASE_URL = "https://xqcipsnyvnozkvehpzsk.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_3KDY3ojS6VUHhQCUrfxKQg_JRUS7PMu";
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const $ = id => document.getElementById(id);
+const hoy = () => new Date().toISOString().slice(0,10);
+const diasAtras = n => new Date(Date.now()-n*864e5).toISOString().slice(0,10);
+const fmtF = d => d ? d.split('-').reverse().join('/') : '';
+const fmtTs = t => t ? new Date(t).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}) : '';
+const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const tag = s => `<span class="tag ${esc(s)}">${esc(SIT[s]||s)}</span>`;
+const SIT = {pendiente:'Pendiente de alta',en_padron:'Ya en el padrón',revisar:'Revisar',pendiente_dte:'Pendiente de DTE',dada_de_baja:'Dada de baja',sin_alta:'Salió sin alta',virgen:'Virgen',activa:'Activa',salida:'Salida',baja:'Baja',anulada:'Anulada',ok:'OK',error:'Error',corriendo:'Corriendo'};
+let USER = null, PROPS = [], TURNO = null;
+const state = { ing:{rows:[],sel:new Set()}, egr:{rows:[],sel:new Set()}, con:{rows:[],sel:new Set()}, movs:[], altaPrev:null, bajaPrev:null };
+
+function toast(m, ms=2500){ const t=$('toast'); t.textContent=m; t.style.display='block'; setTimeout(()=>t.style.display='none',ms); }
+function msg(el, kind, text){ $(el).innerHTML = `<div class="msg ${kind}">${esc(text)}</div>`; }
+function limpiarNumeros(txt){ return [...new Set((txt||'').split(/[\s,;]+/).map(s=>s.trim()).filter(Boolean))]; }
+function expandirRango(d,h){
+  if(!/^032\d{12}$/.test(d)||!/^032\d{12}$/.test(h)) throw new Error('Los números deben tener 15 dígitos y empezar con 032');
+  const a=BigInt(d), b=BigInt(h); if(b<a) throw new Error('El hasta es menor que el desde');
+  if(b-a+1n>10000n) throw new Error('El rango supera las 10.000 caravanas');
+  const out=[]; for(let x=a;x<=b;x++) out.push(x.toString().padStart(15,'0')); return out;
+}
+function numerosDe(rd, rh, lista){
+  let n = limpiarNumeros(lista);
+  if(rd && rh) n = n.concat(expandirRango(rd.trim(), rh.trim()));
+  n = [...new Set(n)];
+  const malos = n.filter(x=>!/^032\d{12}$/.test(x));
+  if(malos.length) throw new Error(`Números inválidos (15 dígitos, empiezan con 032): ${malos.slice(0,5).join(', ')}${malos.length>5?'…':''}`);
+  if(!n.length) throw new Error('No hay caravanas para procesar');
+  return n;
+}
+async function rpc(fn, args){ const {data,error} = await sb.rpc(fn,args); if(error) throw new Error(error.message); return data; }
+async function all(q){ // pagina de a 1000
+  let from=0, out=[]; for(;;){ const {data,error}=await q.range(from,from+999); if(error) throw new Error(error.message); out=out.concat(data||[]); if(!data||data.length<1000) break; from+=1000; } return out;
+}
+const HOTELERO_PROP={'PEGSA':'PEGSA','BULLTRADE SRL':'BULLTRADE','BULLTRADE':'BULLTRADE','DARWASH SA':'DARWASH','DARWASH':'DARWASH','LAS TAPERAS':'LAS TAPERAS','EL SAGUAIPE SAS':'EL SAGUIPE','EL SAGUIPE':'EL SAGUIPE'};
+function propDesdeHotelero(h){ const n=HOTELERO_PROP[(h||'').trim().toUpperCase()]; const p=n&&PROPS.find(x=>x.nombre.toUpperCase()===n); return p?p.id:null; }
+function propNombre(id){ return (PROPS.find(p=>p.id===id)||{}).nombre||''; }
+function llenarProps(sel, conTodos){ const el=$(sel); el.innerHTML = (conTodos?'<option value="">Todos</option>':'') + PROPS.filter(p=>p.activo).map(p=>`<option value="${p.id}">${esc(p.nombre)}</option>`).join(''); }
+function exportXlsx(nombre, hojas){ const wb=XLSX.utils.book_new(); for(const [h,rows] of Object.entries(hojas)) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), h.slice(0,31)); XLSX.writeFile(wb, nombre); }
+function sortTable(tbl, rowsRef, key){ const dir = tbl.dataset.sk===key && tbl.dataset.sd!=='d' ? 'd':'a'; tbl.dataset.sk=key; tbl.dataset.sd=dir; rowsRef.sort((x,y)=>{const a=x[key]??'',b=y[key]??''; return (a>b?1:a<b?-1:0)*(dir==='a'?1:-1);}); }
+
+// ---------- AUTH ----------
+$('lBtn').onclick = async ()=>{
+  const {error} = await sb.auth.signInWithPassword({email:$('lEmail').value.trim(), password:$('lPass').value});
+  if(error) return msg('lMsg','err','No se pudo ingresar: '+error.message);
+};
+$('lPass').addEventListener('keydown', e=>{ if(e.key==='Enter') $('lBtn').click(); });
+$('btnLogout').onclick = async ()=>{ await liberarTurno(); await sb.auth.signOut(); location.reload(); };
+sb.auth.onAuthStateChange((_e, session)=>{ if(session?.user){ USER = session.user.email; iniciar(); } else { USER=null; $('login').classList.remove('hidden'); document.querySelectorAll('.tab').forEach(t=>t.classList.add('hidden')); } });
+
+async function iniciar(){
+  $('login').classList.add('hidden'); $('pUser').textContent = USER;
+  const {data} = await sb.from('propietarios').select('*').order('orden'); PROPS = data||[];
+  ['eProp','cProp','mProp'].forEach(s=>llenarProps(s,true)); ['aProp','vProp'].forEach(s=>llenarProps(s,false));
+  ['aFecha','vFecha','bFecha','kFecha'].forEach(i=>$(i).value=hoy());
+  $('iDesde').value=diasAtras(60); $('iHasta').value=hoy(); $('eDesde').value=diasAtras(120); $('eHasta').value=hoy(); $('mDesde').value=diasAtras(30); $('mHasta').value=hoy();
+  await Promise.all([refrescarTurno(), refrescarSync(), contarPendientes()]);
+  mostrarTab('inicio');
+  setInterval(()=>{ refrescarSync(); if(TURNO?.usuario===USER) tomarTurno(); else refrescarTurno(); }, 60000);
+}
+
+// ---------- TURNO ----------
+const TABS_CARGA = new Set(['ingresos','egresos','altam','bajam']);
+async function tomarTurno(){ try{ TURNO = await rpc('tomar_turno',{p_usuario:USER,p_liberar:false}); }catch(e){ toast(e.message);} pintarTurno(); }
+async function liberarTurno(){ try{ TURNO = await rpc('tomar_turno',{p_usuario:USER,p_liberar:true}); }catch(e){} pintarTurno(); }
+async function refrescarTurno(){ const {data} = await sb.from('bloqueo_edicion').select('*').eq('id',1).single(); TURNO=data; pintarTurno(); }
+function tengoTurno(){ return TURNO?.usuario===USER && (Date.now()-new Date(TURNO.ultima_actividad).getTime()) < 15*60000; }
+function turnoLibre(){ return !TURNO?.usuario || (Date.now()-new Date(TURNO.ultima_actividad).getTime()) >= 15*60000; }
+function pintarTurno(){
+  const p=$('pTurno'), b=$('btnTurno');
+  if(tengoTurno()){ p.textContent='Turno de carga: vos'; p.className='pill ok'; b.textContent='Liberar turno'; }
+  else if(turnoLibre()){ p.textContent='Turno de carga: libre'; p.className='pill'; b.textContent='Tomar turno'; }
+  else { p.textContent='Turno de carga: '+TURNO.usuario; p.className='pill warn'; b.textContent='Tomar turno'; }
+  document.querySelectorAll('#iAlta,#eBaja,#cBaja,#aConf,#bConf,#vConf').forEach(x=>x.title = tengoTurno()?'':'Necesitás el turno de carga');
+}
+$('btnTurno').onclick = ()=> tengoTurno() ? liberarTurno() : tomarTurno();
+function exigirTurno(){ if(!tengoTurno()) throw new Error('Necesitás tomar el turno de carga (botón arriba a la derecha)'+(turnoLibre()?'':`; lo tiene ${TURNO.usuario}`)); }
+
+// ---------- SYNC ----------
+async function refrescarSync(){
+  const {data} = await sb.from('sincronizaciones').select('*').order('id',{ascending:false}).limit(1);
+  const s = data?.[0]; const p=$('pSync');
+  if(!s){ p.textContent='Sincronización: nunca'; p.className='pill warn'; return; }
+  if(s.estado==='ok'){ p.textContent='WinCampo al '+fmtTs(s.fin); p.className='pill ok'; }
+  else if(s.estado==='pendiente'){ const min=Math.round((Date.now()-new Date(s.solicitado_en))/60000); p.textContent=`Refresco pedido hace ${min} min`+(min>5?' — ¿PC de la oficina apagada?':''); p.className='pill warn'; }
+  else if(s.estado==='corriendo'){ p.textContent='Sincronizando…'; p.className='pill warn'; }
+  else { p.textContent='Última sincronización con error'; p.className='pill warn'; }
+}
+$('btnRefrescar').onclick = async ()=>{
+  const {data} = await sb.from('sincronizaciones').select('id').in('estado',['pendiente','corriendo']).limit(1);
+  if(data?.length) return toast('Ya hay un refresco en curso');
+  const {error} = await sb.from('sincronizaciones').insert({solicitado_por:USER,estado:'pendiente'});
+  if(error) return toast(error.message); toast('Refresco solicitado; el script de la oficina lo toma en 1–2 min'); refrescarSync();
+};
+async function syncLogHtml(){
+  const {data} = await sb.from('sincronizaciones').select('*').order('id',{ascending:false}).limit(15);
+  return `<table><tr><th>Pedido</th><th>Por</th><th>Estado</th><th>Inicio</th><th>Fin</th><th>Ingresos</th><th>Egresos</th><th>Salidas</th><th>Error</th></tr>`+
+    (data||[]).map(s=>`<tr><td>${fmtTs(s.solicitado_en)}</td><td>${esc(s.solicitado_por||'programado')}</td><td>${tag(s.estado)}</td><td>${fmtTs(s.inicio)}</td><td>${fmtTs(s.fin)}</td><td>${s.ingresos_nuevos??''}</td><td>${s.egresos_nuevos??''}</td><td>${s.salidas_marcadas??''}</td><td>${esc(s.error||'')}</td></tr>`).join('')+'</table>';
+}
+async function contarPendientes(){
+  const [{count:a},{count:b}] = await Promise.all([
+    sb.from('v_ingresos_cruce').select('*',{count:'exact',head:true}).eq('situacion','pendiente'),
+    sb.from('v_egresos_cruce').select('*',{count:'exact',head:true}).eq('situacion','pendiente_dte')]);
+  $('nIng').textContent=a||''; $('nEgr').textContent=b||''; return [a||0,b||0];
+}
+
+// ---------- TABS ----------
+function mostrarTab(t){
+  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  document.querySelectorAll('.tab').forEach(s=>s.classList.toggle('hidden', s.id!=='t-'+t));
+  $('side').classList.remove('on');
+  if(TABS_CARGA.has(t) && turnoLibre()) tomarTurno();
+  ({inicio:cargarInicio, ingresos:cargarIngresos, egresos:cargarEgresos, consulta:cargarConsulta, movs:cargarMovs, config:cargarConfig, altam:cargarCompras})[t]?.();
+}
+$('nav').onclick = e=>{ const b=e.target.closest('button'); if(b) mostrarTab(b.dataset.t); };
+
+// ---------- INICIO ----------
+async function cargarInicio(){
+  const [pend, {data:res}, {count:virg}, {count:act}] = await Promise.all([contarPendientes(), sb.from('v_resumen').select('*'),
+    sb.from('caravanas').select('*',{count:'exact',head:true}).eq('estado','virgen'), sb.from('caravanas').select('*',{count:'exact',head:true}).eq('estado','activa')]);
+  $('kpis').innerHTML = [['Activas en el padrón',act||0],['Vírgenes disponibles',virg||0],['Ingresos pendientes de alta',pend[0]],['Salidas pendientes de DTE',pend[1]]]
+    .map(([l,v])=>`<div class="kpi"><b>${v.toLocaleString('es-AR')}</b><span>${l}</span></div>`).join('');
+  $('resumenProp').innerHTML = `<table><tr><th>Propietario</th><th>Activas</th><th>Salidas pendientes</th><th>Bajas</th></tr>`+(res||[]).map(r=>`<tr><td>${esc(r.propietario)}</td><td>${r.activas}</td><td>${r.salidas_pendientes}</td><td>${r.bajas}</td></tr>`).join('')+'</table>';
+  $('syncLog').innerHTML = await syncLogHtml();
+}
+
+// ---------- SELECCIÓN GENÉRICA ----------
+function selRango(st, rd, rh, key='caravana', filtro=()=>true){
+  const d=$(rd).value.trim(), h=$(rh).value.trim(); if(!/^032\d{12}$/.test(d)||!/^032\d{12}$/.test(h)) return toast('Rango inválido');
+  const a=BigInt(d), b=BigInt(h); let n=0; st.rows.forEach(r=>{ const x=BigInt(r[key]); if(x>=a&&x<=b&&filtro(r)){ st.sel.add(r[key]); n++; } }); toast(`${n} marcadas`);
+}
+
+// ---------- INGRESOS ----------
+async function cargarIngresos(){
+  let q = sb.from('v_ingresos_cruce').select('*').gte('fecha_ingreso',$('iDesde').value).lte('fecha_ingreso',$('iHasta').value).order('nro_tropa').order('caravana');
+  if($('iTropa').value) q=q.ilike('nro_tropa',`%${$('iTropa').value}%`); if($('iOrigen').value) q=q.ilike('origen',`%${$('iOrigen').value}%`);
+  if($('iCat').value) q=q.eq('categoria',$('iCat').value); if($('iSit').value) q=q.eq('situacion',$('iSit').value);
+  try{ state.ing.rows = await all(q); }catch(e){ return toast(e.message); }
+  state.ing.sel.clear(); pintarIngresos();
+}
+function pintarIngresos(){
+  const st=state.ing, rows=st.rows; const tropas={}; rows.forEach(r=>{(tropas[r.nro_tropa||'—'] ??= []).push(r);});
+  let h=`<tr><th></th><th>Caravana</th><th>Fecha ingreso</th><th>De dónde viene</th><th>Propietario WinCampo</th><th>Cat. WinCampo</th><th>Cat. padrón</th><th>Situación</th><th>Propietario padrón</th><th>Alta</th></tr>`;
+  for(const [t,rs] of Object.entries(tropas)){
+    const pend=rs.filter(r=>r.situacion==='pendiente').length;
+    h+=`<tr class="tropa-h"><td><input type="checkbox" data-tropa="${esc(t)}" ${pend?'':'disabled'}></td><td colspan="9">Tropa ${esc(t)} · ${rs.length} caravanas · ${rs.length-pend} en padrón · ${pend} pendientes${rs[0].es_traslado?' · TRASLADO':''}</td></tr>`;
+    rs.forEach(r=>{ h+=`<tr class="g-${r.situacion}"><td>${r.situacion==='pendiente'?`<input type="checkbox" data-c="${r.caravana}" ${st.sel.has(r.caravana)?'checked':''}>`:''}</td><td class="mono">${r.caravana}</td><td>${fmtF(r.fecha_ingreso)}</td><td>${esc(r.origen)}</td><td>${esc(r.hotelero)}</td><td>${esc(r.categoria_wc)}</td><td><b>${esc(r.categoria||'')}</b></td><td>${tag(r.situacion)}</td><td>${esc(r.propietario||'')}</td><td>${r.fecha_alta?fmtF(r.fecha_alta)+' '+esc(r.dte_alta||''):''}</td></tr>`; });
+  }
+  $('iTabla').innerHTML=h; $('iInfo').textContent=`${rows.length} filas, ${rows.filter(r=>r.situacion==='pendiente').length} pendientes`; contarSel('ing','iCount','iAlta');
+}
+function contarSel(k, elC, elB){ const n=state[k].sel.size; $(elC).textContent=`${n} seleccionadas`; $(elB).disabled=!n; }
+$('iTabla').onchange = e=>{ const c=e.target; if(c.dataset.c){ c.checked?state.ing.sel.add(c.dataset.c):state.ing.sel.delete(c.dataset.c); }
+  else if(c.dataset.tropa!==undefined){ state.ing.rows.filter(r=>(r.nro_tropa||'—')===c.dataset.tropa&&r.situacion==='pendiente').forEach(r=>c.checked?state.ing.sel.add(r.caravana):state.ing.sel.delete(r.caravana)); pintarIngresos(); }
+  contarSel('ing','iCount','iAlta'); };
+$('iBuscar').onclick=cargarIngresos; $('iSelRango').onclick=()=>{selRango(state.ing,'iRd','iRh','caravana',r=>r.situacion==='pendiente');pintarIngresos();};
+$('iSelTodo').onclick=()=>{state.ing.rows.filter(r=>r.situacion==='pendiente').forEach(r=>state.ing.sel.add(r.caravana));pintarIngresos();}; $('iSelNada').onclick=()=>{state.ing.sel.clear();pintarIngresos();};
+$('iAlta').onclick=()=>{
+  try{ exigirTurno(); }catch(e){ return toast(e.message,4000); }
+  const sel=[...state.ing.sel], rows=state.ing.rows.filter(r=>sel.includes(r.caravana));
+  const cats=[...new Set(rows.map(r=>r.categoria).filter(Boolean))], tropas=[...new Set(rows.map(r=>r.nro_tropa))], hots=[...new Set(rows.map(r=>r.hotelero).filter(Boolean))], origs=[...new Set(rows.map(r=>r.origen).filter(Boolean))];
+  const propProp = hots.length===1 ? propDesdeHotelero(hots[0]) : null;
+  panel(`<h3>Dar de alta ${sel.length} caravanas</h3><p class="muted">Tropas: ${esc(tropas.join(', '))} · WinCampo: ${esc(hots.join(', '))} · viene de ${esc(origs.join(', ')||'—')}</p>
+    <label class="f">DTE de ingreso (el que usaste en SIGSA) <input id="pDte" placeholder="032…"></label><br>
+    <label class="f">Propietario de alta <select id="pProp">${PROPS.filter(p=>p.activo).map(p=>`<option value="${p.id}" ${propProp===p.id?'selected':''}>${esc(p.nombre)}</option>`).join('')}</select></label><br>
+    <label class="f">Fecha de alta (cierre en SIGSA) <input type="date" id="pFecha" value="${hoy()}"></label><br>
+    <label class="f">Procedencia (origen declarado en SIGSA) <input id="pProc" value="${esc(origs.length===1?origs[0]:'')}"></label><br>
+    <label class="f">Categoría <select id="pCat"><option value="">Según WinCampo (${esc(cats.join(', ')||'sin mapear')})</option><option>MACHO</option><option>HEMBRA</option><option>VACA</option><option>TORO</option></select></label><br>
+    <label class="f">Observación <input id="pObs"></label><br>
+    <div id="pMsg"></div><button class="b p" id="pOk">Confirmar alta</button> <button class="b" onclick="cerrarPanel()">Cancelar</button>`);
+  $('pOk').onclick = async ()=>{
+    const dte=$('pDte').value.trim(); if(!dte) return msg('pMsg','err','El DTE de ingreso es obligatorio');
+    const catFija=$('pCat').value; const porCat={};
+    rows.forEach(r=>{ const c=catFija||r.categoria; if(!c) return; (porCat[c+'|'+(r.nro_tropa||'')] ??= []).push(r.caravana); });
+    const sinCat = rows.filter(r=>!(catFija||r.categoria)).length; if(sinCat) return msg('pMsg','err',`${sinCat} caravanas sin categoría mapeable; elegí una categoría fija`);
+    $('pOk').disabled=true; let tot=0, om=[];
+    try{ for(const [k,nums] of Object.entries(porCat)){ const [cat,tropa]=k.split('|');
+        const r=await rpc('alta_masiva',{p_numeros:nums,p_propietario_id:+$('pProp').value,p_categoria:cat,p_fecha_alta:$('pFecha').value,p_dte:dte,p_origen:'wincampo',p_fuente:'wincampo',p_usuario:USER,p_nro_tropa:tropa||null,p_compra_id:null,p_observaciones:$('pObs').value||null,p_procedencia:$('pProc').value.trim()||null});
+        tot+=r.total; om=om.concat(r.omitidas||[]); }
+      toast(`${tot} caravanas dadas de alta${om.length?`, ${om.length} omitidas`:''}`,4000); cerrarPanel(); cargarIngresos(); contarPendientes();
+    }catch(e){ msg('pMsg','err',e.message); $('pOk').disabled=false; }
+  };
+};
+
+// ---------- EGRESOS ----------
+async function cargarEgresos(){
+  const sit=$('eSit').value; let rows=[];
+  try{
+    if(sit!=='sin_alta'){
+      let q=sb.from('v_egresos_cruce').select('*').gte('fecha_salida',$('eDesde').value).lte('fecha_salida',$('eHasta').value).order('nro_tropa').order('propietario').order('caravana');
+      if(sit) q=q.eq('situacion',sit); if($('eTropa').value) q=q.ilike('nro_tropa',`%${$('eTropa').value}%`); if($('eProp').value) q=q.eq('propietario_id',+$('eProp').value); if($('eMot').value) q=q.eq('motivo_salida',$('eMot').value);
+      rows = await all(q);
+    }
+    if(!sit||sit==='sin_alta'){
+      let q=sb.from('v_egresos_sin_alta').select('*').gte('fecha_egreso',$('eDesde').value).lte('fecha_egreso',$('eHasta').value).order('nro_tropa').order('caravana');
+      if($('eTropa').value) q=q.ilike('nro_tropa',`%${$('eTropa').value}%`);
+      rows = rows.concat((await all(q)).map(r=>({caravana:r.caravana,situacion:'sin_alta',nro_tropa:r.nro_tropa,hotelero:r.hotelero,fecha_salida:r.fecha_egreso,motivo_salida:r.motivo,destino_salida:r.destino,categoria_wincampo:r.categoria_wc})));
+    }
+  }catch(e){ return toast(e.message); }
+  state.egr.rows=rows; state.egr.sel.clear(); pintarEgresos();
+}
+function pintarEgresos(){
+  const st=state.egr, rows=st.rows; const grupos={}; rows.forEach(r=>{ const k=`${r.nro_tropa||'—'}||${r.propietario||'—'}`; (grupos[k] ??= []).push(r); });
+  let h=`<tr><th></th><th>Caravana</th><th>Situación</th><th>Propietario alta</th><th>Cat. padrón</th><th>Cat. WinCampo</th><th>Fecha alta</th><th>DTE alta</th><th>Salida</th><th>Motivo</th><th>Destino WinCampo</th><th>Baja</th></tr>`;
+  for(const [k,rs] of Object.entries(grupos)){ const [t,p]=k.split('||'); const pend=rs.filter(r=>r.situacion==='pendiente_dte').length;
+    h+=`<tr class="tropa-h"><td><input type="checkbox" data-g="${esc(k)}" ${pend?'':'disabled'}></td><td colspan="11">Tropa ${esc(t)} · propietario ${esc(p)} · ${rs.length} caravanas · ${pend} pendientes de DTE</td></tr>`;
+    rs.forEach(r=>{ h+=`<tr class="g-${r.situacion}"><td>${r.situacion==='pendiente_dte'?`<input type="checkbox" data-c="${r.caravana}" ${st.sel.has(r.caravana)?'checked':''}>`:''}</td><td class="mono">${r.caravana}</td><td>${tag(r.situacion)}</td><td>${esc(r.propietario||'')}</td><td><b>${esc(r.categoria_padron||'')}</b></td><td class="muted">${esc(r.categoria_wincampo||'')}</td><td>${fmtF(r.fecha_alta)}</td><td>${esc(r.dte_alta||'')}</td><td>${fmtF(r.fecha_salida)}</td><td>${esc(r.motivo_salida||'')}</td><td>${esc(r.destino_salida||'')}</td><td>${r.fecha_baja?fmtF(r.fecha_baja)+' '+esc(r.dte_baja||'')+' → '+esc(r.destino_baja||''):''}</td></tr>`; });
+  }
+  $('eTabla').innerHTML=h; $('eInfo').textContent=`${rows.length} filas, ${rows.filter(r=>r.situacion==='pendiente_dte').length} pendientes de DTE, ${rows.filter(r=>r.situacion==='sin_alta').length} sin alta`; contarSel('egr','eCount','eBaja');
+}
+$('eTabla').onchange = e=>{ const c=e.target; if(c.dataset.c){ c.checked?state.egr.sel.add(c.dataset.c):state.egr.sel.delete(c.dataset.c); }
+  else if(c.dataset.g!==undefined){ state.egr.rows.filter(r=>`${r.nro_tropa||'—'}||${r.propietario||'—'}`===c.dataset.g&&r.situacion==='pendiente_dte').forEach(r=>c.checked?state.egr.sel.add(r.caravana):state.egr.sel.delete(r.caravana)); pintarEgresos(); }
+  contarSel('egr','eCount','eBaja'); };
+$('eBuscar').onclick=cargarEgresos; $('eSelRango').onclick=()=>{selRango(state.egr,'eRd','eRh','caravana',r=>r.situacion==='pendiente_dte');pintarEgresos();};
+$('eSelTodo').onclick=()=>{state.egr.rows.filter(r=>r.situacion==='pendiente_dte').forEach(r=>state.egr.sel.add(r.caravana));pintarEgresos();}; $('eSelNada').onclick=()=>{state.egr.sel.clear();pintarEgresos();};
+$('eBaja').onclick=()=>{
+  try{ exigirTurno(); }catch(e){ return toast(e.message,4000); }
+  const sel=[...state.egr.sel], rows=state.egr.rows.filter(r=>sel.includes(r.caravana));
+  const props=[...new Set(rows.map(r=>r.propietario))], dest=[...new Set(rows.map(r=>r.destino_salida).filter(Boolean))], fecha=rows.map(r=>r.fecha_salida).sort().pop();
+  panelBaja(sel, {fecha:fecha||hoy(), destino:dest.length===1?dest[0]:'', fuente:'wincampo', permitirActivas:false,
+    nota:`Propietarios: ${esc(props.join(', '))}${props.length>1?' — <b>atención: más de un propietario, normalmente va un DTE por propietario</b>':''}`, despues:()=>{cargarEgresos();contarPendientes();}});
+};
+function panelBaja(nums, o){
+  panel(`<h3>Dar de baja ${nums.length} caravanas</h3><p class="muted">${o.nota||''}</p>
+    <label class="f">DTE de egreso <input id="pDte"></label><br>
+    <label class="f">Fecha de baja <input type="date" id="pFecha" value="${o.fecha}"></label><br>
+    <label class="f">Destino <input id="pDest" value="${esc(o.destino)}"></label><br>
+    <label class="f">Observación <input id="pObs"></label><br>
+    <div id="pMsg"></div><button class="b d" id="pOk">Confirmar baja</button> <button class="b" onclick="cerrarPanel()">Cancelar</button>`);
+  $('pOk').onclick = async ()=>{
+    const dte=$('pDte').value.trim(); if(!dte) return msg('pMsg','err','El DTE de egreso es obligatorio');
+    if(!$('pDest').value.trim()) return msg('pMsg','err','El destino es obligatorio');
+    $('pOk').disabled=true;
+    try{ const r=await rpc('baja_masiva',{p_numeros:nums,p_fecha_baja:$('pFecha').value,p_dte:dte,p_destino:$('pDest').value.trim(),p_fuente:o.fuente,p_usuario:USER,p_permitir_activas:o.permitirActivas,p_observaciones:$('pObs').value||null});
+      toast(`${r.bajas} caravanas dadas de baja${r.omitidas?.length?`, ${r.omitidas.length} omitidas`:''}`,4000); cerrarPanel(); o.despues?.();
+    }catch(e){ msg('pMsg','err',e.message); $('pOk').disabled=false; }
+  };
+}
+
+// ---------- CONSULTA ----------
+async function cargarConsulta(){
+  let q=sb.from('caravanas').select('*, propietarios(nombre)').order('numero');
+  const n=$('cNum').value.trim(); if(n) q=q.ilike('numero',`%${n}%`);
+  if($('cRd').value&&$('cRh').value) q=q.gte('numero',$('cRd').value.trim()).lte('numero',$('cRh').value.trim());
+  if($('cEst').value) q=q.eq('estado',$('cEst').value); if($('cProp').value) q=q.eq('propietario_id',+$('cProp').value); if($('cCat').value) q=q.eq('categoria',$('cCat').value);
+  if($('cAd').value) q=q.gte('fecha_alta',$('cAd').value); if($('cAh').value) q=q.lte('fecha_alta',$('cAh').value);
+  try{ state.con.rows=(await all(q)).map(r=>({...r,propietario:r.propietarios?.nombre||''})); }catch(e){ return toast(e.message); }
+  state.con.sel.clear(); pintarConsulta();
+}
+function pintarConsulta(){
+  const st=state.con, rows=st.rows;
+  let h=`<tr><th></th><th data-k="numero">Caravana</th><th data-k="estado">Estado</th><th data-k="propietario">Propietario</th><th data-k="categoria">Categoría</th><th data-k="fecha_alta">Alta</th><th>DTE alta</th><th>Procedencia</th><th>Origen</th><th data-k="fecha_salida">Salida</th><th data-k="fecha_baja">Baja</th><th>DTE baja</th><th>Destino</th><th>Obs.</th><th></th></tr>`;
+  rows.forEach(r=>{ h+=`<tr class="g-${r.estado}"><td>${['activa','salida'].includes(r.estado)?`<input type="checkbox" data-c="${r.numero}" ${st.sel.has(r.numero)?'checked':''}>`:''}</td><td class="mono">${r.numero}</td><td>${tag(r.estado)}</td><td>${esc(r.propietario)}</td><td>${esc(r.categoria||'')}</td><td>${fmtF(r.fecha_alta)}</td><td>${esc(r.dte_alta||'')}</td><td>${esc(r.procedencia_alta||'')}</td><td class="muted">${esc(r.origen_alta||'')}${r.nro_tropa_alta?' '+esc(r.nro_tropa_alta):''}</td><td>${fmtF(r.fecha_salida)}${r.motivo_salida?' '+esc(r.motivo_salida):''}</td><td>${fmtF(r.fecha_baja)}</td><td>${esc(r.dte_baja||'')}</td><td>${esc(r.destino_baja||'')}</td><td class="muted">${esc(r.observaciones||'')}</td><td><button class="b s" data-det="${r.numero}">Ver</button></td></tr>`; });
+  $('cTabla').innerHTML=h; $('cInfo').textContent=`${rows.length} caravanas`; contarSel('con','cCount','cBaja');
+}
+$('cTabla').onclick = e=>{ const th=e.target.closest('th[data-k]'); if(th){ sortTable($('cTabla'),state.con.rows,th.dataset.k); pintarConsulta(); } const b=e.target.closest('button[data-det]'); if(b) detalle(b.dataset.det); };
+$('cTabla').onchange = e=>{ const c=e.target; if(c.dataset.c){ c.checked?state.con.sel.add(c.dataset.c):state.con.sel.delete(c.dataset.c); contarSel('con','cCount','cBaja'); } };
+$('cBuscar').onclick=cargarConsulta; $('cSelTodo').onclick=()=>{state.con.rows.filter(r=>['activa','salida'].includes(r.estado)).forEach(r=>state.con.sel.add(r.numero));pintarConsulta();}; $('cSelNada').onclick=()=>{state.con.sel.clear();pintarConsulta();};
+$('cExcel').onclick=()=>exportXlsx(`caravanas_${hoy()}.xlsx`,{Caravanas:state.con.rows.map(({propietarios,...r})=>r)});
+$('cBaja').onclick=()=>{ try{ exigirTurno(); }catch(e){ return toast(e.message,4000); } panelBaja([...state.con.sel],{fecha:hoy(),destino:'',fuente:'manual',permitirActivas:true,nota:'Baja manual desde Consulta (incluye activas)',despues:cargarConsulta}); };
+async function detalle(num){
+  const [{data:c},{data:m},{data:wi},{data:we}] = await Promise.all([sb.from('caravanas').select('*, propietarios(nombre)').eq('numero',num).single(),
+    sb.from('movimientos').select('*, propietarios(nombre)').eq('caravana',num).order('id'), sb.from('wc_ingresos').select('*').eq('caravana',num).order('fecha_ingreso'), sb.from('wc_egresos').select('*').eq('caravana',num).order('fecha_egreso')]);
+  const puedeEx = tengoTurno();
+  modal(`<h2 class="mono">${num} ${tag(c.estado)}</h2>
+    <p>Propietario: <b>${esc(c.propietarios?.nombre||'—')}</b> · Categoría: <b>${esc(c.categoria||'—')}</b> · Alta: ${fmtF(c.fecha_alta)} ${esc(c.dte_alta||'')} · procedencia ${esc(c.procedencia_alta||'—')} (${esc(c.origen_alta||'')})<br>
+    Salida: ${fmtF(c.fecha_salida)} ${esc(c.motivo_salida||'')} ${esc(c.destino_salida||'')} · Baja: ${fmtF(c.fecha_baja)} ${esc(c.dte_baja||'')} ${esc(c.destino_baja||'')}<br>Obs.: ${esc(c.observaciones||'')}</p>
+    <h3>Movimientos</h3><table><tr><th>Fecha</th><th>Tipo</th><th>DTE</th><th>Propietario</th><th>Cat.</th><th>Origen/Destino</th><th>Tropa</th><th>Fuente</th><th>Usuario</th><th>Obs.</th></tr>${(m||[]).map(x=>`<tr><td>${fmtF(x.fecha)}</td><td>${esc(x.tipo)}</td><td>${esc(x.dte||'')}</td><td>${esc(x.propietarios?.nombre||'')}</td><td>${esc(x.categoria||'')}</td><td>${esc(x.origen_destino||'')}</td><td>${esc(x.nro_tropa||'')}</td><td>${esc(x.fuente)}</td><td>${esc(x.usuario||'')}</td><td>${esc(x.observaciones||'')}</td></tr>`).join('')}</table>
+    <h3>En WinCampo</h3><table><tr><th>Mov.</th><th>Fecha</th><th>Tropa</th><th>Origen / destino</th><th>Cat.</th><th>Motivo</th></tr>${(wi||[]).map(x=>`<tr><td>Ingreso</td><td>${fmtF(x.fecha_ingreso)}</td><td>${esc(x.nro_tropa||'')}</td><td>${esc(x.origen||'')}</td><td>${esc(x.categoria_wc||'')}</td><td>${x.es_traslado?'traslado':''}</td></tr>`).join('')}${(we||[]).map(x=>`<tr><td>Egreso</td><td>${fmtF(x.fecha_egreso)}</td><td>${esc(x.nro_tropa||'')}</td><td>${esc(x.destino||'')}</td><td>${esc(x.categoria_wc||'')}</td><td>${esc(x.motivo||'')}</td></tr>`).join('')}</table>
+    <h3>Acciones</h3><div class="row"><label class="f">Observación (obligatoria) <input id="xObs" style="width:300px"></label>
+    ${c.estado!=='anulada'?`<button class="b d" id="xAnular" ${puedeEx?'':'disabled'}>Anular</button>`:''}${['baja','salida','anulada'].includes(c.estado)?`<button class="b" id="xReact" ${puedeEx?'':'disabled'}>Reactivar</button>`:''}<span class="sp"></span><button class="b" onclick="cerrarModal()">Cerrar</button></div><div id="xMsg"></div>`);
+  const ex = async accion=>{ try{ await rpc('cambiar_estado_excepcional',{p_numero:num,p_accion:accion,p_observacion:$('xObs').value,p_usuario:USER}); toast('Listo'); cerrarModal(); cargarConsulta(); }catch(e){ msg('xMsg','err',e.message); } };
+  if($('xAnular')) $('xAnular').onclick=()=>ex('anular'); if($('xReact')) $('xReact').onclick=()=>ex('reactivar');
+}
+
+// ---------- ALTA MANUAL ----------
+$('aPrev').onclick = async ()=>{
+  try{ const nums=numerosDe($('aRd').value,$('aRh').value,$('aLista').value);
+    const ex = await all(sb.from('caravanas').select('numero,estado').in('numero',nums));
+    const est = Object.fromEntries(ex.map(r=>[r.numero,r.estado])); const cnt={nuevas:0,virgen:0,otras:[]};
+    nums.forEach(n=>{ const e=est[n]; if(!e) cnt.nuevas++; else if(e==='virgen') cnt.virgen++; else cnt.otras.push(n+' ('+e+')'); });
+    state.altaPrev = nums.filter(n=>!est[n]||est[n]==='virgen');
+    $('aPrevBox').innerHTML=`<div class="msg ${cnt.otras.length?'warn':'ok'}">${nums.length} caravanas: ${cnt.nuevas} nuevas, ${cnt.virgen} vírgenes que pasan a activas, ${cnt.otras.length} se omiten (ya activas/salida/baja/anuladas)${cnt.otras.length?': '+esc(cnt.otras.slice(0,10).join(', '))+(cnt.otras.length>10?'…':''):''}</div>`;
+    $('aConf').disabled = !state.altaPrev.length;
+  }catch(e){ msg('aPrevBox','err',e.message); $('aConf').disabled=true; }
+};
+$('aConf').onclick = async ()=>{
+  try{ exigirTurno(); $('aConf').disabled=true;
+    const r=await rpc('alta_masiva',{p_numeros:state.altaPrev,p_propietario_id:+$('aProp').value,p_categoria:$('aCat').value,p_fecha_alta:$('aFecha').value,p_dte:$('aDte').value||null,p_origen:'manual',p_fuente:'manual',p_usuario:USER,p_nro_tropa:null,p_compra_id:null,p_observaciones:$('aObs').value||null,p_procedencia:$('aProc').value.trim()||null});
+    msg('aPrevBox','ok',`Alta confirmada: ${r.total} caravanas (${r.nuevas} nuevas, ${r.virgenes_usadas} vírgenes)`); $('aLista').value=''; $('aRd').value=$('aRh').value=''; state.altaPrev=null;
+  }catch(e){ msg('aPrevBox','err',e.message); $('aConf').disabled=false; }
+};
+$('vConf').onclick = async ()=>{
+  try{ exigirTurno(); const cant=+$('vCant').value; if(!cant) throw new Error('Indicá la cantidad');
+    if(!confirm(`¿Asignar ${cant} caravanas vírgenes a ${propNombre(+$('vProp').value)} como ${$('vCat').value}?`)) return;
+    const r=await rpc('alta_con_virgenes',{p_cantidad:cant,p_propietario_id:+$('vProp').value,p_categoria:$('vCat').value,p_fecha_alta:$('vFecha').value,p_dte:$('vDte').value||null,p_usuario:USER,p_compra_id:$('vCompra').value?+$('vCompra').value:null,p_observaciones:null});
+    msg('vBox','ok',`${r.total} vírgenes asignadas: ${r.desde} → ${r.hasta}`); cargarCompras();
+  }catch(e){ msg('vBox','err',e.message); }
+};
+async function cargarCompras(){
+  const {data} = await sb.from('compras_caravanas').select('*').order('fecha',{ascending:false});
+  const {data:v} = await sb.from('caravanas').select('compra_id').eq('estado','virgen');
+  const disp={}; (v||[]).forEach(x=>disp[x.compra_id]=(disp[x.compra_id]||0)+1);
+  $('vCompra').innerHTML='<option value="">Primeras disponibles</option>'+(data||[]).filter(c=>disp[c.id]).map(c=>`<option value="${c.id}">${fmtF(c.fecha)} ${c.numero_desde}→${c.numero_hasta} (${disp[c.id]} disp.)</option>`).join('');
+  $('vInfo').textContent=`${Object.values(disp).reduce((a,b)=>a+b,0)} vírgenes disponibles`;
+  $('comprasTabla').innerHTML=`<table><tr><th>Fecha</th><th>Proveedor</th><th>Desde</th><th>Hasta</th><th>Cantidad</th><th>Disponibles</th><th>Comprobante</th></tr>`+(data||[]).map(c=>`<tr><td>${fmtF(c.fecha)}</td><td>${esc(c.proveedor||'')}</td><td class="mono">${c.numero_desde}</td><td class="mono">${c.numero_hasta}</td><td>${c.cantidad}</td><td>${disp[c.id]||0}</td><td>${esc(c.comprobante||'')}</td></tr>`).join('')+'</table>';
+}
+
+// ---------- BAJA MANUAL ----------
+$('bPrev').onclick = async ()=>{
+  try{ const nums=numerosDe($('bRd').value,$('bRh').value,$('bLista').value);
+    const ex = await all(sb.from('caravanas').select('numero,estado').in('numero',nums)); const est=Object.fromEntries(ex.map(r=>[r.numero,r.estado]));
+    const ok=nums.filter(n=>['activa','salida'].includes(est[n])), no=nums.filter(n=>!['activa','salida'].includes(est[n]));
+    state.bajaPrev=ok; $('bPrevBox').innerHTML=`<div class="msg ${no.length?'warn':'ok'}">${ok.length} caravanas se dan de baja (${ok.filter(n=>est[n]==='salida').length} con salida en WinCampo, ${ok.filter(n=>est[n]==='activa').length} activas); ${no.length} se omiten${no.length?': '+esc(no.slice(0,10).map(n=>n+' ('+(est[n]||'no existe')+')').join(', ')):''}</div>`;
+    $('bConf').disabled=!ok.length;
+  }catch(e){ msg('bPrevBox','err',e.message); $('bConf').disabled=true; }
+};
+$('bConf').onclick = async ()=>{
+  try{ exigirTurno(); if(!$('bDte').value.trim()) throw new Error('El DTE de egreso es obligatorio'); if(!$('bDest').value.trim()) throw new Error('El destino es obligatorio'); $('bConf').disabled=true;
+    const r=await rpc('baja_masiva',{p_numeros:state.bajaPrev,p_fecha_baja:$('bFecha').value,p_dte:$('bDte').value.trim(),p_destino:$('bDest').value.trim(),p_fuente:'manual',p_usuario:USER,p_permitir_activas:true,p_observaciones:$('bObs').value||null});
+    msg('bPrevBox','ok',`Baja confirmada: ${r.bajas} caravanas`); $('bLista').value=''; $('bRd').value=$('bRh').value=''; state.bajaPrev=null; contarPendientes();
+  }catch(e){ msg('bPrevBox','err',e.message); $('bConf').disabled=false; }
+};
+
+// ---------- MOVIMIENTOS ----------
+async function cargarMovs(){
+  let q=sb.from('movimientos').select('*, propietarios(nombre)').gte('fecha',$('mDesde').value).lte('fecha',$('mHasta').value).order('id',{ascending:false});
+  if($('mTipo').value) q=q.eq('tipo',$('mTipo').value); if($('mProp').value) q=q.eq('propietario_id',+$('mProp').value); if($('mDte').value) q=q.ilike('dte',`%${$('mDte').value}%`); if($('mCar').value) q=q.ilike('caravana',`%${$('mCar').value}%`); if($('mFuente').value) q=q.eq('fuente',$('mFuente').value);
+  try{ state.movs=(await all(q)).map(r=>({...r,propietario:r.propietarios?.nombre||''})); }catch(e){ return toast(e.message); }
+  $('mTabla').innerHTML=`<tr><th>Fecha</th><th>Caravana</th><th>Tipo</th><th>DTE</th><th>Propietario</th><th>Cat.</th><th>Origen/Destino</th><th>Tropa</th><th>Fuente</th><th>Usuario</th><th>Cargado</th><th>Obs.</th></tr>`+state.movs.map(x=>`<tr><td>${fmtF(x.fecha)}</td><td class="mono">${x.caravana}</td><td>${esc(x.tipo)}</td><td>${esc(x.dte||'')}</td><td>${esc(x.propietario)}</td><td>${esc(x.categoria||'')}</td><td>${esc(x.origen_destino||'')}</td><td>${esc(x.nro_tropa||'')}</td><td>${esc(x.fuente)}</td><td>${esc(x.usuario||'')}</td><td>${fmtTs(x.creado_en)}</td><td class="muted">${esc(x.observaciones||'')}</td></tr>`).join('');
+  $('mInfo').textContent=`${state.movs.length} movimientos`;
+}
+$('mBuscar').onclick=cargarMovs; $('mExcel').onclick=()=>exportXlsx(`movimientos_${hoy()}.xlsx`,{Movimientos:state.movs.map(({propietarios,...r})=>r)});
+
+// ---------- CONFIG ----------
+async function cargarConfig(){
+  const {data} = await sb.from('propietarios').select('*').order('orden'); PROPS=data||[];
+  $('propBox').innerHTML=`<table><tr><th>Nombre</th><th>CUIT</th><th>RENSPA</th><th>Activo</th><th></th></tr>`+PROPS.map(p=>`<tr data-id="${p.id}"><td>${esc(p.nombre)}</td><td><input value="${esc(p.cuit||'')}" data-f="cuit" style="width:130px"></td><td><input value="${esc(p.renspa||'')}" data-f="renspa" style="width:160px"></td><td><input type="checkbox" data-f="activo" ${p.activo?'checked':''}></td><td><button class="b s" data-save="${p.id}">Guardar</button></td></tr>`).join('')+'</table>';
+  $('propBox').onclick=async e=>{ const b=e.target.closest('button[data-save]'); if(!b) return; const tr=b.closest('tr'); const g=f=>tr.querySelector(`[data-f=${f}]`);
+    const {error}=await sb.from('propietarios').update({cuit:g('cuit').value||null,renspa:g('renspa').value||null,activo:g('activo').checked}).eq('id',+b.dataset.save); toast(error?error.message:'Guardado'); };
+  cargarCompras(); $('syncLog2').innerHTML=await syncLogHtml();
+}
+$('kConf').onclick=async ()=>{
+  try{ const r=await rpc('registrar_compra',{p_fecha:$('kFecha').value,p_proveedor:$('kProv').value||null,p_desde:$('kRd').value.trim(),p_hasta:$('kRh').value.trim(),p_comprobante:$('kComp').value||null,p_usuario:USER,p_observaciones:null});
+    msg('kBox','ok',`Compra registrada: ${r.cantidad} caravanas vírgenes`); $('kRd').value=$('kRh').value=$('kComp').value=''; cargarCompras();
+  }catch(e){ msg('kBox','err',e.message); }
+};
+$('bkExcel').onclick=async ()=>{
+  toast('Armando backup…');
+  try{ const t={}; for(const tb of ['caravanas','movimientos','propietarios','compras_caravanas','wc_ingresos','wc_egresos','sincronizaciones']) t[tb]=await all(sb.from(tb).select('*').order(tb==='caravanas'?'numero':'id'));
+    exportXlsx(`backup_caravanas_pecuaria_${hoy()}.xlsx`, t); }catch(e){ toast(e.message); }
+};
+
+// ---------- PANEL / MODAL ----------
+function panel(html){ $('side').innerHTML=html; $('side').classList.add('on'); }
+function cerrarPanel(){ $('side').classList.remove('on'); }
+function modal(html){ $('modalBox').innerHTML=html; $('modal').classList.add('on'); }
+function cerrarModal(){ $('modal').classList.remove('on'); }
+$('modal').onclick=e=>{ if(e.target.id==='modal') cerrarModal(); };
+</script>
+</body>
+</html>
