@@ -85,7 +85,7 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
 <!-- INICIO -->
 <section id="t-inicio" class="tab hidden">
   <div class="kpis" id="kpis"></div>
-  <div class="card"><h3>Caravanas por propietario</h3><div id="resumenProp"></div></div>
+  <div class="card"><h3>Caravanas por propietario</h3><p class="muted">Hacé clic en un propietario para ver el detalle por categoría.</p><div id="resumenProp"></div><div id="detProp" style="margin-top:14px"></div></div>
   <div class="card"><h3>Últimas sincronizaciones</h3><div id="syncLog"></div></div>
 </section>
 
@@ -108,8 +108,17 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
       <button class="b s" id="iSelRango">Marcar rango</button>
       <button class="b s" id="iSelTodo">Marcar todas las pendientes filtradas</button>
       <button class="b s" id="iSelNada">Desmarcar</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <span class="muted">Cerrar guía por categoría (cantidad a cerrar de cada una, sobre lo filtrado):</span>
+      <label class="f">TORO <input type="number" min="0" id="iQ_TORO" style="width:70px"></label>
+      <label class="f">VACA <input type="number" min="0" id="iQ_VACA" style="width:70px"></label>
+      <label class="f">HEMBRA <input type="number" min="0" id="iQ_HEMBRA" style="width:70px"></label>
+      <label class="f">MACHO <input type="number" min="0" id="iQ_MACHO" style="width:70px"></label>
+      <button class="b s" id="iSelCant">Marcar esas cantidades</button>
       <span class="sp"></span>
       <span id="iCount" class="muted">0 seleccionadas</span>
+      <button class="b" id="iCopiar" disabled>Copiar caravanas</button>
       <button class="b p" id="iAlta" disabled>Dar de alta seleccionadas…</button>
     </div>
   </div>
@@ -137,6 +146,7 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
       <button class="b s" id="eSelNada">Desmarcar</button>
       <span class="sp"></span>
       <span id="eCount" class="muted">0 seleccionadas</span>
+      <button class="b" id="eCopiar">Copiar caravanas</button>
       <button class="b p" id="eBaja" disabled>Dar de baja seleccionadas…</button>
     </div>
   </div>
@@ -446,8 +456,33 @@ async function cargarInicio(){
     sb.from('caravanas').select('*',{count:'exact',head:true}).eq('estado','virgen'), sb.from('caravanas').select('*',{count:'exact',head:true}).in('estado',['activa','salida'])]);
   $('kpis').innerHTML = [['Activas en SENASA',act||0],['Vírgenes disponibles',virg||0],['Ingresos pendientes de alta',pend[0]],['Salidas WinCampo pendientes de DTE',pend[1]]]
     .map(([l,v])=>`<div class="kpi"><b>${v.toLocaleString('es-AR')}</b><span>${l}</span></div>`).join('');
-  $('resumenProp').innerHTML = `<table><tr><th>Propietario</th><th>Activas</th><th>Salidas por WinCampo (sin DTE)</th><th>Activas con 40 días</th><th>Activas con 90 días</th><th>Bajas</th></tr>`+(res||[]).map(r=>`<tr><td>${esc(r.propietario)}</td><td><b>${r.activas}</b></td><td>${r.salidas_wincampo}</td><td>${r.con_40_dias}</td><td>${r.con_90_dias}</td><td>${r.bajas}</td></tr>`).join('')+`<tr class="tropa-h"><td>Total</td><td>${(res||[]).reduce((a,r)=>a+r.activas,0)}</td><td>${(res||[]).reduce((a,r)=>a+r.salidas_wincampo,0)}</td><td>${(res||[]).reduce((a,r)=>a+r.con_40_dias,0)}</td><td>${(res||[]).reduce((a,r)=>a+r.con_90_dias,0)}</td><td>${(res||[]).reduce((a,r)=>a+r.bajas,0)}</td></tr>`+'</table><p class="muted">Activas = dadas de alta en SENASA (incluye las que WinCampo ya dio por salidas hasta que se confirme la baja con DTE). Solo una baja, manual o desde Egresos, descuenta activas.</p>';
+  $('resumenProp').innerHTML = `<table><tr><th>Propietario</th><th>Activas</th><th>Salidas por WinCampo (sin DTE)</th><th>Activas con 40 días</th><th>Activas con 90 días</th><th>Bajas</th></tr>`+(res||[]).map(r=>`<tr data-prop="${esc(r.propietario)}" style="cursor:pointer"><td>${esc(r.propietario)}</td><td><b>${r.activas}</b></td><td>${r.salidas_wincampo}</td><td>${r.con_40_dias}</td><td>${r.con_90_dias}</td><td>${r.bajas}</td></tr>`).join('')+`<tr class="tropa-h" data-prop="*" style="cursor:pointer"><td>Total</td><td>${(res||[]).reduce((a,r)=>a+r.activas,0)}</td><td>${(res||[]).reduce((a,r)=>a+r.salidas_wincampo,0)}</td><td>${(res||[]).reduce((a,r)=>a+r.con_40_dias,0)}</td><td>${(res||[]).reduce((a,r)=>a+r.con_90_dias,0)}</td><td>${(res||[]).reduce((a,r)=>a+r.bajas,0)}</td></tr>`+'</table><p class="muted">Activas = dadas de alta en SENASA (incluye las que WinCampo ya dio por salidas hasta que se confirme la baja con DTE). Solo una baja, manual o desde Egresos, descuenta activas.</p>';
   $('syncLog').innerHTML = await syncLogHtml();
+  $('resumenProp').onclick = e=>{ const tr=e.target.closest('tr[data-prop]'); if(tr) detallePropietario(tr.dataset.prop); };
+}
+const CAT_ORDEN=['VACA','MACHO','HEMBRA','TORO','MIXTO'], CAT_COLOR={VACA:'#2a78d6',MACHO:'#eb6834',HEMBRA:'#1baf7a',TORO:'#eda100',MIXTO:'#e87ba4'};
+async function detallePropietario(nombre){
+  $('detProp').innerHTML='<span class="muted">Cargando…</span>';
+  let q=sb.from('v_caravanas').select('categoria,estado,fecha_alta').in('estado',['activa','salida','baja']);
+  if(nombre!=='*') q=q.eq('propietario',nombre);
+  let rows; try{ rows=await all(q); }catch(e){ return $('detProp').innerHTML=`<div class="msg err">${esc(e.message)}</div>`; }
+  const h=hoy(), c={}; CAT_ORDEN.forEach(k=>c[k]={activas:0,salidas:0,d40:0,d90:0,bajas:0});
+  rows.forEach(r=>{ const k=c[r.categoria]||(c[r.categoria]={activas:0,salidas:0,d40:0,d90:0,bajas:0});
+    if(r.estado==='baja'){ k.bajas++; return; } k.activas++; if(r.estado==='salida') k.salidas++;
+    if(r.fecha_alta && addDias(r.fecha_alta,40)<=h) k.d40++; if(r.fecha_alta && addDias(r.fecha_alta,90)<=h) k.d90++; });
+  const cats=Object.keys(c).filter(k=>c[k].activas||c[k].bajas).sort((a,b)=>CAT_ORDEN.indexOf(a)-CAT_ORDEN.indexOf(b));
+  const tot=cats.reduce((a,k)=>a+c[k].activas,0);
+  const tabla=`<table><tr><th>Categoría</th><th>Activas</th><th>Salidas por WinCampo</th><th>Con 40 días</th><th>Con 90 días</th><th>Bajas</th><th>% activas</th></tr>`+
+    cats.map(k=>`<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${CAT_COLOR[k]||'#999'};margin-right:6px"></span>${esc(k)}</td><td><b>${c[k].activas}</b></td><td>${c[k].salidas}</td><td>${c[k].d40}</td><td>${c[k].d90}</td><td>${c[k].bajas}</td><td>${tot?Math.round(c[k].activas*100/tot):0} %</td></tr>`).join('')+
+    `<tr class="tropa-h"><td>Total</td><td>${tot}</td><td>${cats.reduce((a,k)=>a+c[k].salidas,0)}</td><td>${cats.reduce((a,k)=>a+c[k].d40,0)}</td><td>${cats.reduce((a,k)=>a+c[k].d90,0)}</td><td>${cats.reduce((a,k)=>a+c[k].bajas,0)}</td><td>100 %</td></tr></table>`;
+  let ang=-Math.PI/2, paths='', labels='';
+  cats.filter(k=>c[k].activas).forEach(k=>{ const v=c[k].activas, a=(v===tot)?2*Math.PI-1e-4:v/tot*2*Math.PI, x1=100+80*Math.cos(ang), y1=100+80*Math.sin(ang), x2=100+80*Math.cos(ang+a), y2=100+80*Math.sin(ang+a), big=a>Math.PI?1:0;
+    paths+=`<path d="M100,100 L${x1.toFixed(1)},${y1.toFixed(1)} A80,80 0 ${big},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${CAT_COLOR[k]||'#999'}" stroke="#fff" stroke-width="2"><title>${k}: ${v} (${Math.round(v*100/tot)} %)</title></path>`;
+    if(a>0.35){ const m=ang+a/2, lx=100+58*Math.cos(m), ly=100+58*Math.sin(m); labels+=`<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="11" fill="#fff" font-weight="600">${Math.round(v*100/tot)}%</text>`; }
+    ang+=a; });
+  const svg=`<svg viewBox="0 0 200 200" width="220" height="220">${paths}<circle cx="100" cy="100" r="34" fill="#fff"/><text x="100" y="96" text-anchor="middle" font-size="16" font-weight="700" fill="#1f2a1f">${tot}</text><text x="100" y="112" text-anchor="middle" font-size="9" fill="#6b756b">activas</text>${labels}</svg>`;
+  const leyenda=cats.filter(k=>c[k].activas).map(k=>`<div style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:10px;height:10px;border-radius:2px;background:${CAT_COLOR[k]}"></span>${esc(k)} <b>${c[k].activas}</b></div>`).join('');
+  $('detProp').innerHTML=`<h3>${nombre==='*'?'Todos los propietarios':esc(nombre)} · por categoría</h3><div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start"><div style="flex:1;min-width:420px">${tabla}</div><div style="display:flex;gap:14px;align-items:center">${svg}<div>${leyenda}</div></div></div>`;
 }
 
 // ---------- SELECCIÓN GENÉRICA ----------
@@ -466,7 +501,8 @@ async function cargarIngresos(){
 }
 function pintarIngresos(){
   const st=state.ing, rows=st.rows; const tropas={}; rows.forEach(r=>{(tropas[r.nro_tropa||'—'] ??= []).push(r);});
-  let h=`<tr><th></th><th>Caravana</th><th>Fecha ingreso</th><th>De dónde viene</th><th>Propietario WinCampo</th><th>Cat. WinCampo</th><th>Cat. padrón</th><th>Situación</th><th>Propietario padrón</th><th>Alta</th></tr>`;
+  const pendTot=rows.filter(r=>r.situacion==='pendiente').length;
+  let h=`<tr><th><input type="checkbox" id="iSelAll" title="Marcar / desmarcar todas las pendientes filtradas" ${pendTot&&st.sel.size===pendTot?'checked':''} ${pendTot?'':'disabled'}></th><th>Caravana</th><th>Fecha ingreso</th><th>De dónde viene</th><th>Propietario WinCampo</th><th>Cat. WinCampo</th><th>Cat. padrón</th><th>Situación</th><th>Propietario padrón</th><th>Alta</th></tr>`;
   for(const [t,rs] of Object.entries(tropas)){
     const pend=rs.filter(r=>r.situacion==='pendiente').length;
     h+=`<tr class="tropa-h"><td><input type="checkbox" data-tropa="${esc(t)}" ${pend?'':'disabled'}></td><td colspan="9">Tropa ${esc(t)} · ${rs.length} caravanas · ${rs.length-pend} en padrón · ${pend} pendientes${rs[0].es_traslado?' · TRASLADO':''}</td></tr>`;
@@ -474,12 +510,24 @@ function pintarIngresos(){
   }
   $('iTabla').innerHTML=h; $('iInfo').textContent=`${rows.length} filas, ${rows.filter(r=>r.situacion==='pendiente').length} pendientes`; contarSel('ing','iCount','iAlta');
 }
-function contarSel(k, elC, elB){ const n=state[k].sel.size; $(elC).textContent=`${n} seleccionadas`; $(elB).disabled=!n; }
-$('iTabla').onchange = e=>{ const c=e.target; if(c.dataset.c){ c.checked?state.ing.sel.add(c.dataset.c):state.ing.sel.delete(c.dataset.c); }
+function contarSel(k, elC, elB){ const n=state[k].sel.size; let txt=`${n} seleccionadas`;
+  if(k==='ing'&&n){ const c={}; state.ing.rows.filter(r=>state.ing.sel.has(r.caravana)).forEach(r=>{ const k2=r.categoria||'sin cat.'; c[k2]=(c[k2]||0)+1; }); txt+=' ('+Object.entries(c).map(([a,b])=>`${a} ${b}`).join(', ')+')'; $('iCopiar').disabled=!n; }
+  $(elC).textContent=txt; $(elB).disabled=!n; }
+$('iTabla').onchange = e=>{ const c=e.target;
+  if(c.id==='iSelAll'){ state.ing.sel.clear(); if(c.checked) state.ing.rows.filter(r=>r.situacion==='pendiente').forEach(r=>state.ing.sel.add(r.caravana)); pintarIngresos(); return; }
+  if(c.dataset.c){ c.checked?state.ing.sel.add(c.dataset.c):state.ing.sel.delete(c.dataset.c); }
   else if(c.dataset.tropa!==undefined){ state.ing.rows.filter(r=>(r.nro_tropa||'—')===c.dataset.tropa&&r.situacion==='pendiente').forEach(r=>c.checked?state.ing.sel.add(r.caravana):state.ing.sel.delete(r.caravana)); pintarIngresos(); }
   contarSel('ing','iCount','iAlta'); };
 $('iBuscar').onclick=cargarIngresos; $('iSelRango').onclick=()=>{selRango(state.ing,'iRd','iRh','caravana',r=>r.situacion==='pendiente');pintarIngresos();};
-$('iSelTodo').onclick=()=>{state.ing.rows.filter(r=>r.situacion==='pendiente').forEach(r=>state.ing.sel.add(r.caravana));pintarIngresos();}; $('iSelNada').onclick=()=>{state.ing.sel.clear();pintarIngresos();};
+$('iSelTodo').onclick=()=>{state.ing.rows.filter(r=>r.situacion==='pendiente').forEach(r=>state.ing.sel.add(r.caravana));pintarIngresos();};
+$('iSelCant').onclick=()=>{
+  const q={TORO:+$('iQ_TORO').value||0, VACA:+$('iQ_VACA').value||0, HEMBRA:+$('iQ_HEMBRA').value||0, MACHO:+$('iQ_MACHO').value||0};
+  if(!Object.values(q).some(v=>v>0)) return toast('Indicá la cantidad de al menos una categoría');
+  state.ing.sel.clear(); const falta=[];
+  for(const [cat,cant] of Object.entries(q)){ if(!cant) continue; const disp=state.ing.rows.filter(r=>r.situacion==='pendiente'&&r.categoria===cat); disp.slice(0,cant).forEach(r=>state.ing.sel.add(r.caravana)); if(disp.length<cant) falta.push(`${cat}: pedidas ${cant}, hay ${disp.length}`); }
+  pintarIngresos(); toast(falta.length?('Faltan caravanas — '+falta.join('; ')):`${state.ing.sel.size} caravanas marcadas`, 5000);
+};
+$('iCopiar').onclick=async ()=>{ const txt=[...state.ing.sel].join('\n'); try{ await navigator.clipboard.writeText(txt); toast(`${state.ing.sel.size} caravanas copiadas al portapapeles`); }catch(e){ prompt('Copiá las caravanas:', txt.replace(/\n/g,' ')); } }; $('iSelNada').onclick=()=>{state.ing.sel.clear();pintarIngresos();};
 $('iAlta').onclick=()=>{
   try{ exigirTurno(); }catch(e){ return toast(e.message,4000); }
   const sel=[...state.ing.sel], rows=state.ing.rows.filter(r=>sel.includes(r.caravana));
@@ -527,17 +575,21 @@ async function cargarEgresos(){
 }
 function pintarEgresos(){
   const st=state.egr, rows=st.rows; const grupos={}; rows.forEach(r=>{ const k=`${r.nro_tropa||'—'}||${r.propietario||'—'}`; (grupos[k] ??= []).push(r); });
-  let h=`<tr><th></th><th>Caravana</th><th>Situación</th><th>Propietario alta</th><th>Cat. padrón</th><th>Cat. WinCampo</th><th>Fecha alta</th><th>DTE alta</th><th>Salida</th><th>Motivo</th><th>Destino WinCampo</th><th>Baja</th></tr>`;
+  const pendTot=rows.filter(r=>r.situacion==='pendiente_dte').length;
+  let h=`<tr><th><input type="checkbox" id="eSelAll" title="Marcar / desmarcar todas las pendientes filtradas" ${pendTot&&st.sel.size===pendTot?'checked':''} ${pendTot?'':'disabled'}></th><th>Caravana</th><th>Situación</th><th>Propietario alta</th><th>Cat. padrón</th><th>Cat. WinCampo</th><th>Fecha alta</th><th>DTE alta</th><th>Salida</th><th>Motivo</th><th>Destino WinCampo</th><th>Baja</th></tr>`;
   for(const [k,rs] of Object.entries(grupos)){ const [t,p]=k.split('||'); const pend=rs.filter(r=>r.situacion==='pendiente_dte').length;
     h+=`<tr class="tropa-h"><td><input type="checkbox" data-g="${esc(k)}" ${pend?'':'disabled'}></td><td colspan="11">Tropa ${esc(t)} · propietario ${esc(p)} · ${rs.length} caravanas · ${pend} pendientes de DTE</td></tr>`;
     rs.forEach(r=>{ h+=`<tr class="g-${r.situacion}"><td>${r.situacion==='pendiente_dte'?`<input type="checkbox" data-c="${r.caravana}" ${st.sel.has(r.caravana)?'checked':''}>`:''}</td><td class="mono">${r.caravana}</td><td>${tag(r.situacion)}</td><td>${esc(r.propietario||'')}</td><td><b>${esc(r.categoria_padron||'')}</b></td><td class="muted">${esc(r.categoria_wincampo||'')}</td><td>${fmtF(r.fecha_alta)}</td><td>${esc(r.dte_alta||'')}</td><td>${fmtF(r.fecha_salida)}</td><td>${esc(r.motivo_salida||'')}</td><td>${esc(r.destino_salida||'')}</td><td>${r.fecha_baja?fmtF(r.fecha_baja)+' '+esc(r.dte_baja||'')+' → '+esc(r.destino_baja||''):''}</td></tr>`; });
   }
   $('eTabla').innerHTML=h; $('eInfo').textContent=`${rows.length} filas, ${rows.filter(r=>r.situacion==='pendiente_dte').length} pendientes de DTE, ${rows.filter(r=>r.situacion==='sin_alta').length} sin alta`; contarSel('egr','eCount','eBaja');
 }
-$('eTabla').onchange = e=>{ const c=e.target; if(c.dataset.c){ c.checked?state.egr.sel.add(c.dataset.c):state.egr.sel.delete(c.dataset.c); }
+$('eTabla').onchange = e=>{ const c=e.target;
+  if(c.id==='eSelAll'){ state.egr.sel.clear(); if(c.checked) state.egr.rows.filter(r=>r.situacion==='pendiente_dte').forEach(r=>state.egr.sel.add(r.caravana)); pintarEgresos(); return; }
+  if(c.dataset.c){ c.checked?state.egr.sel.add(c.dataset.c):state.egr.sel.delete(c.dataset.c); }
   else if(c.dataset.g!==undefined){ state.egr.rows.filter(r=>`${r.nro_tropa||'—'}||${r.propietario||'—'}`===c.dataset.g&&r.situacion==='pendiente_dte').forEach(r=>c.checked?state.egr.sel.add(r.caravana):state.egr.sel.delete(r.caravana)); pintarEgresos(); }
   contarSel('egr','eCount','eBaja'); };
-$('eBuscar').onclick=cargarEgresos; $('eSelRango').onclick=()=>{selRango(state.egr,'eRd','eRh','caravana',r=>r.situacion==='pendiente_dte');pintarEgresos();};
+$('eBuscar').onclick=cargarEgresos;
+$('eCopiar').onclick=async ()=>{ if(!state.egr.sel.size) return toast('No hay caravanas seleccionadas'); const txt=[...state.egr.sel].join('\n'); try{ await navigator.clipboard.writeText(txt); toast(`${state.egr.sel.size} caravanas copiadas`); }catch(e){ prompt('Copiá las caravanas:', txt.replace(/\n/g,' ')); } }; $('eSelRango').onclick=()=>{selRango(state.egr,'eRd','eRh','caravana',r=>r.situacion==='pendiente_dte');pintarEgresos();};
 $('eSelTodo').onclick=()=>{state.egr.rows.filter(r=>r.situacion==='pendiente_dte').forEach(r=>state.egr.sel.add(r.caravana));pintarEgresos();}; $('eSelNada').onclick=()=>{state.egr.sel.clear();pintarEgresos();};
 $('eBaja').onclick=()=>{
   try{ exigirTurno(); }catch(e){ return toast(e.message,4000); }
@@ -576,12 +628,15 @@ async function cargarConsulta(){
 }
 function pintarConsulta(){
   const st=state.con, rows=st.rows;
-  let h=`<tr><th></th><th data-k="numero">Caravana</th><th data-k="estado">Estado</th><th data-k="propietario">Propietario</th><th data-k="categoria">Categoría</th><th data-k="bolsa">Bolsa</th><th data-k="fecha_alta">Alta</th><th data-k="fecha_40_dias">40 días</th><th data-k="fecha_90_dias">90 días</th><th>DTE alta</th><th>Procedencia</th><th>Origen</th><th data-k="fecha_salida">Salida</th><th data-k="fecha_baja">Baja</th><th>DTE baja</th><th>Destino</th><th>Obs.</th><th></th></tr>`;
+  const selTot=rows.filter(r=>['activa','salida'].includes(r.estado)).length;
+  let h=`<tr><th><input type="checkbox" id="cSelAll" title="Marcar / desmarcar todo lo filtrado" ${selTot&&st.sel.size===selTot?'checked':''} ${selTot?'':'disabled'}></th><th data-k="numero">Caravana</th><th data-k="estado">Estado</th><th data-k="propietario">Propietario</th><th data-k="categoria">Categoría</th><th data-k="bolsa">Bolsa</th><th data-k="fecha_alta">Alta</th><th data-k="fecha_40_dias">40 días</th><th data-k="fecha_90_dias">90 días</th><th>DTE alta</th><th>Procedencia</th><th>Origen</th><th data-k="fecha_salida">Salida</th><th data-k="fecha_baja">Baja</th><th>DTE baja</th><th>Destino</th><th>Obs.</th><th></th></tr>`;
   rows.forEach(r=>{ h+=`<tr class="g-${r.estado}"><td>${['activa','salida'].includes(r.estado)?`<input type="checkbox" data-c="${r.numero}" ${st.sel.has(r.numero)?'checked':''}>`:''}</td><td class="mono">${r.numero}${r.tipo==='visual'?' <span class="tag baja">visual</span>':''}</td><td>${tag(r.estado)}</td><td>${esc(r.propietario||'')}</td><td>${esc(r.categoria||'')}</td><td>${esc(r.bolsa||'')}</td><td>${fmtF(r.fecha_alta)}</td><td class="${r.fecha_40_dias&&r.fecha_40_dias<=hoy()?'':'muted'}">${fmtF(r.fecha_40_dias)}</td><td class="${r.fecha_90_dias&&r.fecha_90_dias<=hoy()?'':'muted'}">${fmtF(r.fecha_90_dias)}</td><td>${esc(r.dte_alta||'')}</td><td>${esc(r.procedencia_alta||'')}</td><td class="muted">${esc(r.origen_alta||'')}${r.nro_tropa_alta?' '+esc(r.nro_tropa_alta):''}</td><td>${fmtF(r.fecha_salida)}${r.motivo_salida?' '+esc(r.motivo_salida):''}</td><td>${fmtF(r.fecha_baja)}</td><td>${esc(r.dte_baja||'')}</td><td>${esc(r.destino_baja||'')}</td><td class="muted">${esc(r.observaciones||'')}</td><td><button class="b s" data-det="${r.numero}">Ver</button></td></tr>`; });
   $('cTabla').innerHTML=h; $('cInfo').textContent=`${rows.length} caravanas`; contarSel('con','cCount','cBaja');
 }
 $('cTabla').onclick = e=>{ const th=e.target.closest('th[data-k]'); if(th){ sortTable($('cTabla'),state.con.rows,th.dataset.k); pintarConsulta(); } const b=e.target.closest('button[data-det]'); if(b) detalle(b.dataset.det); };
-$('cTabla').onchange = e=>{ const c=e.target; if(c.dataset.c){ c.checked?state.con.sel.add(c.dataset.c):state.con.sel.delete(c.dataset.c); contarSel('con','cCount','cBaja'); } };
+$('cTabla').onchange = e=>{ const c=e.target;
+  if(c.id==='cSelAll'){ state.con.sel.clear(); if(c.checked) state.con.rows.filter(r=>['activa','salida'].includes(r.estado)).forEach(r=>state.con.sel.add(r.numero)); pintarConsulta(); return; }
+  if(c.dataset.c){ c.checked?state.con.sel.add(c.dataset.c):state.con.sel.delete(c.dataset.c); contarSel('con','cCount','cBaja'); } };
 $('cBuscar').onclick=cargarConsulta; $('cSelTodo').onclick=()=>{state.con.rows.filter(r=>['activa','salida'].includes(r.estado)).forEach(r=>state.con.sel.add(r.numero));pintarConsulta();}; $('cSelNada').onclick=()=>{state.con.sel.clear();pintarConsulta();};
 $('cExcel').onclick=()=>exportXlsx(`caravanas_${hoy()}.xlsx`,{Caravanas:state.con.rows});
 $('cBaja').onclick=()=>{ try{ exigirTurno(); }catch(e){ return toast(e.message,4000); } panelBaja([...state.con.sel],{fecha:hoy(),destino:'',fuente:'manual',permitirActivas:true,nota:'Baja manual desde Consulta (incluye activas)',despues:cargarConsulta}); };
