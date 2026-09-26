@@ -98,6 +98,7 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
       <label class="f">Hasta <input type="date" id="iHasta"></label>
       <label class="f">Tropa <input id="iTropa" placeholder="PEG.HUI.…"></label>
       <label class="f">Origen <input id="iOrigen"></label>
+      <label class="f">Propietario WinCampo <select id="iHot"><option value="">Todos</option></select></label>
       <label class="f">Categoría <select id="iCat"><option value="">Todas</option><option>TORO</option><option>VACA</option><option>HEMBRA</option><option>MACHO</option></select></label>
       <label class="f">Situación <select id="iSit"><option value="">Todas</option><option value="pendiente">Pendiente de alta</option><option value="en_padron">Ya en el padrón</option><option value="revisar">Revisar (salida/baja)</option></select></label>
       <button class="b" id="iBuscar">Buscar</button>
@@ -509,10 +510,16 @@ function selRango(st, rd, rh, key='caravana', filtro=()=>true){
 }
 
 // ---------- INGRESOS ----------
+async function cargarHoteleros(){
+  if($('iHot').options.length>1) return;
+  try{ const rows=await all(sb.from('wc_ingresos').select('hotelero')); const hs=[...new Set(rows.map(r=>r.hotelero).filter(Boolean))].sort();
+    $('iHot').innerHTML='<option value="">Todos</option>'+hs.map(h=>`<option>${esc(h)}</option>`).join(''); }catch(e){}
+}
 async function cargarIngresos(){
+  cargarHoteleros();
   let q = sb.from('v_ingresos_cruce').select('*').gte('fecha_ingreso',$('iDesde').value).lte('fecha_ingreso',$('iHasta').value).order('nro_tropa').order('caravana');
   if($('iTropa').value) q=q.ilike('nro_tropa',`%${$('iTropa').value}%`); if($('iOrigen').value) q=q.ilike('origen',`%${$('iOrigen').value}%`);
-  if($('iCat').value) q=q.eq('categoria',$('iCat').value); if($('iSit').value) q=q.eq('situacion',$('iSit').value);
+  if($('iCat').value) q=q.eq('categoria',$('iCat').value); if($('iSit').value) q=q.eq('situacion',$('iSit').value); if($('iHot').value) q=q.eq('hotelero',$('iHot').value);
   try{ state.ing.rows = await all(q); }catch(e){ return toast(e.message); }
   state.ing.sel.clear(); state.ing.soloSel=false; pintarIngresos();
 }
