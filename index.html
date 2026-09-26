@@ -187,13 +187,17 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
 <!-- ALTA MANUAL -->
 <section id="t-altam" class="tab hidden">
   <div class="card">
-    <h3>Alta por rango o lista</h3>
+    <h3>Alta manual</h3>
+    <p class="muted">Elegí de dónde salen las caravanas (rango, lista pegada o vírgenes), completá los datos del alta una sola vez y hacé la vista previa. Admite caravanas visuales en la lista. Sin bolsa, entran como CLASIFICAR.</p>
     <div class="row">
-      <label class="f">Desde <input id="aRd" class="mono" maxlength="15"></label>
-      <label class="f">Hasta <input id="aRh" class="mono" maxlength="15"></label>
-      <span class="muted">o pegá una lista (una por línea, o separadas por coma / espacio); admite caravanas visuales. Sin bolsa, entran como CLASIFICAR.</span>
+      <label class="f">Rango desde <input id="aRd" class="mono" maxlength="15"></label>
+      <label class="f">hasta <input id="aRh" class="mono" maxlength="15"></label>
+      <span class="muted">o</span>
+      <label class="f">Vírgenes: cantidad <input type="number" id="vCant" min="1" style="width:90px"></label>
+      <label class="f">de la compra <select id="vCompra"><option value="">Primeras disponibles</option></select></label>
+      <span class="muted" id="vInfo"></span>
     </div>
-    <textarea id="aLista" rows="4" style="width:100%;margin-top:8px" class="mono" placeholder="032010044087925&#10;032010044087926"></textarea>
+    <textarea id="aLista" rows="4" style="width:100%;margin-top:8px" class="mono" placeholder="o pegá una lista: 032010044087925&#10;032010044087926"></textarea>
     <div class="row" style="margin-top:8px">
       <label class="f">Propietario <select id="aProp"></select></label>
       <label class="f">Categoría <select id="aCat"><option>MACHO</option><option>HEMBRA</option><option>VACA</option><option>TORO</option><option>MIXTO</option></select></label>
@@ -204,25 +208,16 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
       <label class="f">RENSPA origen <input id="aRenspa" placeholder="00.000.0.00000/00" style="width:150px"></label>
       <label class="f">CUIG origen <input id="aCuig" placeholder="AA000" maxlength="10" style="width:90px"></label>
       <label class="f">Observación <input id="aObs" style="width:220px"></label>
+    </div>
+    <div class="row" style="margin-top:8px">
       <button class="b" id="aPrev">Vista previa</button>
+      <button class="b" id="aCopiar" disabled>Copiar caravanas</button>
+      <span class="sp"></span>
       <button class="b p" id="aConf" disabled>Confirmar alta</button>
       <button class="b p" id="aConfDdjj" disabled>Confirmar y generar DDJJ</button>
     </div>
     <div id="aPrevBox"></div>
-  </div>
-  <div class="card">
-    <h3>Alta con vírgenes</h3>
-    <div class="row">
-      <label class="f">Cantidad <input type="number" id="vCant" min="1" style="width:90px"></label>
-      <label class="f">De la compra <select id="vCompra"><option value="">Primeras disponibles</option></select></label>
-      <label class="f">Propietario <select id="vProp"></select></label>
-      <label class="f">Categoría <select id="vCat"><option>MACHO</option><option>HEMBRA</option><option>VACA</option><option>TORO</option></select></label>
-      <label class="f">Fecha de alta <input type="date" id="vFecha"></label>
-      <label class="f">DTE (opcional) <input id="vDte"></label>
-      <button class="b p" id="vConf">Asignar vírgenes</button>
-      <span class="muted" id="vInfo"></span>
-    </div>
-    <div id="vBox"></div>
+    <div class="tw hidden" style="max-height:40vh;margin-top:8px" id="aTablaWrap"><table id="aTabla"></table></div>
   </div>
 </section>
 
@@ -408,8 +403,8 @@ async function iniciar(){
   fechasDDMM(document);
   $('login').classList.add('hidden'); $('pUser').textContent = USER;
   const {data} = await sb.from('propietarios').select('*').order('orden'); PROPS = data||[];
-  ['eProp','cProp','mProp'].forEach(s=>llenarProps(s,true)); ['aProp','vProp'].forEach(s=>llenarProps(s,false));
-  ['aFecha','vFecha','bFecha','kFecha'].forEach(i=>$(i).value=hoy());
+  ['eProp','cProp','mProp'].forEach(s=>llenarProps(s,true)); ['aProp'].forEach(s=>llenarProps(s,false));
+  ['aFecha','bFecha','kFecha'].forEach(i=>$(i).value=hoy());
   $('iDesde').value=diasAtras(60); $('iHasta').value=hoy(); $('eDesde').value=diasAtras(120); $('eHasta').value=hoy(); $('mDesde').value=diasAtras(30); $('mHasta').value=hoy();
   await Promise.all([refrescarTurno(), refrescarSync(), contarPendientes()]);
   mostrarTab('inicio');
@@ -429,7 +424,7 @@ function pintarTurno(){
   if(tengoTurno()){ p.textContent='Turno de carga: vos'; p.className='pill ok'; b.textContent='Liberar turno'; }
   else if(turnoLibre()){ p.textContent='Turno de carga: libre'; p.className='pill'; b.textContent='Tomar turno'; }
   else { const min=Math.round((Date.now()-new Date(TURNO.ultima_actividad).getTime())/60000); p.textContent=`Turno de carga: ${TURNO.usuario} (activo hace ${min} min; se libera a los 15 min sin actividad)`; p.className='pill warn'; b.textContent='Tomar turno'; }
-  document.querySelectorAll('#iAlta,#eBaja,#cBaja,#aConf,#aConfDdjj,#bConf,#vConf,#kfConf').forEach(x=>x.title = tengoTurno()?'':'Necesitás el turno de carga');
+  document.querySelectorAll('#iAlta,#eBaja,#cBaja,#aConf,#aConfDdjj,#bConf,#kfConf').forEach(x=>x.title = tengoTurno()?'':'Necesitás el turno de carga');
 }
 $('btnTurno').onclick = ()=> tengoTurno() ? liberarTurno() : tomarTurno();
 function exigirTurno(){ if(!tengoTurno()) throw new Error('Necesitás tomar el turno de carga (botón arriba a la derecha)'+(turnoLibre()?'':`; lo tiene ${TURNO.usuario}`)); }
@@ -742,35 +737,41 @@ async function detalle(num){
 }
 
 // ---------- ALTA MANUAL ----------
+state.altaOrigen='manual';
 $('aPrev').onclick = async ()=>{
-  try{ const nums=numerosDe($('aRd').value,$('aRh').value,$('aLista').value);
-    const ex = await all(sb.from('caravanas').select('numero,estado').in('numero',nums));
-    const est = Object.fromEntries(ex.map(r=>[r.numero,r.estado])); const cnt={nuevas:0,virgen:0,otras:[]};
-    nums.forEach(n=>{ const e=est[n]; if(!e) cnt.nuevas++; else if(e==='virgen') cnt.virgen++; else cnt.otras.push(n+' ('+e+')'); });
-    state.altaPrev = nums.filter(n=>!est[n]||est[n]==='virgen');
-    $('aPrevBox').innerHTML=`<div class="msg ${cnt.otras.length?'warn':'ok'}">${nums.length} caravanas: ${cnt.nuevas} nuevas, ${cnt.virgen} vírgenes que pasan a activas, ${cnt.otras.length} se omiten (ya activas/salida/baja/anuladas)${cnt.otras.length?': '+esc(cnt.otras.slice(0,10).join(', '))+(cnt.otras.length>10?'…':''):''}</div>`;
-    $('aConf').disabled = $('aConfDdjj').disabled = !state.altaPrev.length;
-  }catch(e){ msg('aPrevBox','err',e.message); $('aConf').disabled=$('aConfDdjj').disabled=true; }
+  try{
+    const cant=+$('vCant').value||0; let nums, est={}, cnt={nuevas:0,virgen:0,otras:[]};
+    if(cant>0){
+      let q=sb.from('caravanas').select('numero').eq('estado','virgen').order('numero').limit(cant); if($('vCompra').value) q=q.eq('compra_id',+$('vCompra').value);
+      const {data,error}=await q; if(error) throw new Error(error.message);
+      nums=(data||[]).map(r=>r.numero).sort((a,b)=>a.localeCompare(b)); if(nums.length<cant) throw new Error(`Solo hay ${nums.length} vírgenes disponibles${$('vCompra').value?' en esa compra':''}`);
+      nums.forEach(n=>est[n]='virgen'); cnt.virgen=nums.length; state.altaOrigen='virgen';
+    } else {
+      nums=numerosDe($('aRd').value,$('aRh').value,$('aLista').value);
+      const ex=await all(sb.from('caravanas').select('numero,estado').in('numero',nums)); est=Object.fromEntries(ex.map(r=>[r.numero,r.estado]));
+      nums.forEach(n=>{ const e=est[n]; if(!e) cnt.nuevas++; else if(e==='virgen') cnt.virgen++; else cnt.otras.push(n+' ('+e+')'); }); state.altaOrigen='manual';
+    }
+    state.altaPrev=nums.filter(n=>!est[n]||est[n]==='virgen');
+    const p=state.altaPrev;
+    $('aPrevBox').innerHTML=`<div class="msg ${cnt.otras.length?'warn':'ok'}">${p.length} caravanas para dar de alta${cant>0?` (vírgenes ${p[0]} → ${p[p.length-1]})`:` · ${cnt.nuevas} nuevas, ${cnt.virgen} vírgenes que pasan a activas`}${cnt.otras.length?` · ${cnt.otras.length} se omiten (ya activas/salida/baja/anuladas): ${esc(cnt.otras.slice(0,10).join(', '))}${cnt.otras.length>10?'…':''}`:''} · propietario ${esc(propNombre(+$('aProp').value))}, ${esc($('aCat').value)}, bolsa ${esc($('aBolsa').value.trim().toUpperCase()||'CLASIFICAR')}, alta ${fmtF($('aFecha').value)}${$('aDte').value.trim()?', DTE '+esc($('aDte').value.trim()):''}</div>`;
+    $('aTabla').innerHTML='<tr><th>#</th><th>Caravana</th><th>Estado actual</th></tr>'+p.map((n,i)=>`<tr><td class="muted">${i+1}</td><td class="mono">${n}</td><td>${est[n]?tag(est[n]):'<span class="tag pendiente">nueva</span>'}</td></tr>`).join('');
+    $('aTablaWrap').classList.toggle('hidden',!p.length);
+    $('aConf').disabled=$('aConfDdjj').disabled=$('aCopiar').disabled=!p.length;
+  }catch(e){ msg('aPrevBox','err',e.message); $('aTablaWrap').classList.add('hidden'); state.altaPrev=null; $('aConf').disabled=$('aConfDdjj').disabled=$('aCopiar').disabled=true; }
 };
+$('aCopiar').onclick=async ()=>{ if(!state.altaPrev?.length) return; const txt=state.altaPrev.join('\n'); try{ await navigator.clipboard.writeText(txt); toast(`${state.altaPrev.length} caravanas copiadas al portapapeles`); }catch(e){ prompt('Copiá las caravanas:', txt.replace(/\n/g,' ')); } };
 const confirmarAltaManual = async (conDdjj)=>{
-  try{ exigirTurno(); $('aConf').disabled=$('aConfDdjj').disabled=true;
+  try{ exigirTurno(); if(!state.altaPrev?.length) throw new Error('Hacé primero la vista previa'); $('aConf').disabled=$('aConfDdjj').disabled=true;
     const renspa=$('aRenspa').value.trim(), cuig=$('aCuig').value.trim().toUpperCase(), proc=$('aProc').value.trim(), dte=$('aDte').value.trim();
     const obs=[$('aObs').value.trim(), renspa&&'RENSPA: '+renspa, cuig&&'CUIG: '+cuig].filter(Boolean).join(' · ')||null;
     const nums=state.altaPrev.slice();
-    const r=await rpc('alta_masiva',{p_numeros:nums,p_propietario_id:+$('aProp').value,p_categoria:$('aCat').value,p_fecha_alta:$('aFecha').value,p_dte:dte||null,p_origen:'manual',p_fuente:'manual',p_usuario:USER,p_nro_tropa:null,p_compra_id:null,p_observaciones:obs,p_procedencia:proc||null,p_bolsa:$('aBolsa').value.trim()||null});
-    msg('aPrevBox','ok',`Alta confirmada: ${r.total} caravanas (${r.nuevas} nuevas, ${r.virgenes_usadas} vírgenes), bolsa ${r.bolsa}`);
+    const r=await rpc('alta_masiva',{p_numeros:nums,p_propietario_id:+$('aProp').value,p_categoria:$('aCat').value,p_fecha_alta:$('aFecha').value,p_dte:dte||null,p_origen:state.altaOrigen,p_fuente:'manual',p_usuario:USER,p_nro_tropa:null,p_compra_id:$('vCompra').value&&state.altaOrigen==='virgen'?+$('vCompra').value:null,p_observaciones:obs,p_procedencia:proc||null,p_bolsa:$('aBolsa').value.trim()||null});
+    msg('aPrevBox','ok',`Alta confirmada: ${r.total} caravanas (${r.nuevas} nuevas, ${r.virgenes_usadas} vírgenes), bolsa ${r.bolsa}. ${nums[0]} → ${nums[nums.length-1]}`);
     if(conDdjj) generarDDJJ({dte, titular:proc, establecimiento:proc, renspa, cuig, fecha:$('aFecha').value, numeros:nums.filter(x=>!(r.omitidas||[]).includes(x))});
-    $('aLista').value=''; $('aRd').value=$('aRh').value=''; state.altaPrev=null;
+    $('aLista').value=''; $('aRd').value=$('aRh').value=''; $('vCant').value=''; state.altaPrev=null; $('aCopiar').disabled=false; cargarCompras();
   }catch(e){ msg('aPrevBox','err',e.message); $('aConf').disabled=$('aConfDdjj').disabled=false; }
 };
 $('aConf').onclick=()=>confirmarAltaManual(false); $('aConfDdjj').onclick=()=>confirmarAltaManual(true);
-$('vConf').onclick = async ()=>{
-  try{ exigirTurno(); const cant=+$('vCant').value; if(!cant) throw new Error('Indicá la cantidad');
-    if(!confirm(`¿Asignar ${cant} caravanas vírgenes a ${propNombre(+$('vProp').value)} como ${$('vCat').value}?`)) return;
-    const r=await rpc('alta_con_virgenes',{p_cantidad:cant,p_propietario_id:+$('vProp').value,p_categoria:$('vCat').value,p_fecha_alta:$('vFecha').value,p_dte:$('vDte').value||null,p_usuario:USER,p_compra_id:$('vCompra').value?+$('vCompra').value:null,p_observaciones:null});
-    msg('vBox','ok',`${r.total} vírgenes asignadas: ${r.desde} → ${r.hasta}`); cargarCompras();
-  }catch(e){ msg('vBox','err',e.message); }
-};
 async function cargarCompras(){
   const {data} = await sb.from('compras_caravanas').select('*').order('fecha',{ascending:false});
   const {data:v} = await sb.from('caravanas').select('compra_id').eq('estado','virgen');
