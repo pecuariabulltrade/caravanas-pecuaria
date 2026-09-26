@@ -202,7 +202,15 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
     <div class="row" style="margin-top:8px">
       <label class="f">Propietario <select id="aProp"></select></label>
       <label class="f">Categoría <select id="aCat"><option>MACHO</option><option>HEMBRA</option><option>VACA</option><option>TORO</option><option>MIXTO</option></select></label>
-      <label class="f">o varias categorías en orden (ej. "5 VACA, 20 MACHO") <input id="aCats" placeholder="5 VACA, 20 MACHO" style="width:190px"></label>
+      <label class="f">&nbsp;<span style="display:flex;align-items:center;gap:6px;height:32px"><input type="checkbox" id="aMulti"> Varias categorías</span></label>
+      <div id="aMultiBox" class="hidden" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <span class="muted" style="align-self:center">En este orden:</span>
+        <div class="kpi" style="padding:6px 10px;display:flex;align-items:center;gap:8px"><b style="font-size:13px;color:#2a78d6">VACA</b><input type="number" min="0" id="aQ_VACA" style="width:64px" placeholder="0"></div>
+        <div class="kpi" style="padding:6px 10px;display:flex;align-items:center;gap:8px"><b style="font-size:13px;color:#eb6834">MACHO</b><input type="number" min="0" id="aQ_MACHO" style="width:64px" placeholder="0"></div>
+        <div class="kpi" style="padding:6px 10px;display:flex;align-items:center;gap:8px"><b style="font-size:13px;color:#1baf7a">HEMBRA</b><input type="number" min="0" id="aQ_HEMBRA" style="width:64px" placeholder="0"></div>
+        <div class="kpi" style="padding:6px 10px;display:flex;align-items:center;gap:8px"><b style="font-size:13px;color:#c98500">TORO</b><input type="number" min="0" id="aQ_TORO" style="width:64px" placeholder="0"></div>
+        <span class="muted" id="aMultiTot"></span>
+      </div>
       <label class="f">Bolsa <input id="aBolsa" placeholder="CLASIFICAR" style="width:110px"></label>
       <label class="f">Fecha de alta <input type="date" id="aFecha"></label>
       <label class="f">DTE (opcional) <input id="aDte"></label>
@@ -746,13 +754,16 @@ async function detalle(num){
 
 // ---------- ALTA MANUAL ----------
 state.altaOrigen='manual'; state.altaCats=null;
-function parsearCats(txt){
-  txt=(txt||'').trim().toUpperCase(); if(!txt) return null;
-  const out=[]; for(const parte of txt.split(/[,;\n]+/)){ const m=parte.trim().match(/^(\d+)\s*(TORO|VACA|HEMBRA|MACHO|MIXTO)S?$/); if(!m) throw new Error(`No entiendo "${parte.trim()}"; usá el formato "5 VACA, 20 MACHO"`); out.push([m[2],+m[1]]); }
+function parsearCats(){
+  if(!$('aMulti').checked) return null;
+  const out=['VACA','MACHO','HEMBRA','TORO'].map(c=>[c,+$('aQ_'+c).value||0]).filter(([,q])=>q>0);
+  if(!out.length) throw new Error('Marcaste "Varias categorías" pero no pusiste cantidades');
   return out;
 }
+$('aMulti').onchange=()=>{ $('aMultiBox').classList.toggle('hidden',!$('aMulti').checked); $('aCat').disabled=$('aMulti').checked; };
+['VACA','MACHO','HEMBRA','TORO'].forEach(c=>$('aQ_'+c).addEventListener('input',()=>{ const t=['VACA','MACHO','HEMBRA','TORO'].reduce((a,k)=>a+(+$('aQ_'+k).value||0),0); $('aMultiTot').textContent=t?`total ${t}`:''; }));
 function categoriasPorCaravana(nums){
-  const spec=parsearCats($('aCats').value); const map={};
+  const spec=parsearCats(); const map={};
   if(!spec){ nums.forEach(n=>map[n]=$('aCat').value); return map; }
   const tot=spec.reduce((a,[,c])=>a+c,0); if(tot!==nums.length) throw new Error(`Las cantidades por categoría suman ${tot} y hay ${nums.length} caravanas en la vista previa`);
   let i=0; spec.forEach(([cat,c])=>{ for(let k=0;k<c;k++) map[nums[i++]]=cat; }); return map;
@@ -792,7 +803,7 @@ const confirmarAltaManual = async (conDdjj)=>{
       r.total+=g.total; r.nuevas+=g.nuevas; r.virgenes_usadas+=g.virgenes_usadas; r.omitidas=r.omitidas.concat(g.omitidas||[]); r.bolsa=g.bolsa; }
     msg('aPrevBox','ok',`Alta confirmada: ${r.total} caravanas (${r.nuevas} nuevas, ${r.virgenes_usadas} vírgenes; ${Object.entries(grupos).map(([k,v])=>v.length+' '+k).join(', ')}), bolsa ${r.bolsa}. ${nums[0]} → ${nums[nums.length-1]}`);
     if(conDdjj) generarDDJJ({dte, titular:proc, establecimiento:proc, renspa, cuig, fecha:$('aFecha').value, numeros:nums.filter(x=>!(r.omitidas||[]).includes(x))});
-    $('aLista').value=''; $('aRd').value=$('aRh').value=''; $('vCant').value=''; $('aCats').value=''; state.altaPrev=null; state.altaCats=null; $('aCopiar').disabled=false; cargarCompras();
+    $('aLista').value=''; $('aRd').value=$('aRh').value=''; $('vCant').value=''; ['VACA','MACHO','HEMBRA','TORO'].forEach(c=>$('aQ_'+c).value=''); $('aMultiTot').textContent=''; state.altaPrev=null; state.altaCats=null; $('aCopiar').disabled=false; cargarCompras();
   }catch(e){ msg('aPrevBox','err',e.message); $('aConf').disabled=$('aConfDdjj').disabled=false; }
 };
 $('aConf').onclick=()=>confirmarAltaManual(false); $('aConfDdjj').onclick=()=>confirmarAltaManual(true);
