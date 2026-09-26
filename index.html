@@ -202,6 +202,7 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
     <div class="row" style="margin-top:8px">
       <label class="f">Propietario <select id="aProp"></select></label>
       <label class="f">Categoría <select id="aCat"><option>MACHO</option><option>HEMBRA</option><option>VACA</option><option>TORO</option><option>MIXTO</option></select></label>
+      <label class="f">o varias categorías en orden (ej. "5 VACA, 20 MACHO") <input id="aCats" placeholder="5 VACA, 20 MACHO" style="width:190px"></label>
       <label class="f">Bolsa <input id="aBolsa" placeholder="CLASIFICAR" style="width:110px"></label>
       <label class="f">Fecha de alta <input type="date" id="aFecha"></label>
       <label class="f">DTE (opcional) <input id="aDte"></label>
@@ -744,7 +745,18 @@ async function detalle(num){
 }
 
 // ---------- ALTA MANUAL ----------
-state.altaOrigen='manual';
+state.altaOrigen='manual'; state.altaCats=null;
+function parsearCats(txt){
+  txt=(txt||'').trim().toUpperCase(); if(!txt) return null;
+  const out=[]; for(const parte of txt.split(/[,;\n]+/)){ const m=parte.trim().match(/^(\d+)\s*(TORO|VACA|HEMBRA|MACHO|MIXTO)S?$/); if(!m) throw new Error(`No entiendo "${parte.trim()}"; usá el formato "5 VACA, 20 MACHO"`); out.push([m[2],+m[1]]); }
+  return out;
+}
+function categoriasPorCaravana(nums){
+  const spec=parsearCats($('aCats').value); const map={};
+  if(!spec){ nums.forEach(n=>map[n]=$('aCat').value); return map; }
+  const tot=spec.reduce((a,[,c])=>a+c,0); if(tot!==nums.length) throw new Error(`Las cantidades por categoría suman ${tot} y hay ${nums.length} caravanas en la vista previa`);
+  let i=0; spec.forEach(([cat,c])=>{ for(let k=0;k<c;k++) map[nums[i++]]=cat; }); return map;
+}
 $('aPrev').onclick = async ()=>{
   try{
     const cant=+$('vCant').value||0; let nums, est={}, cnt={nuevas:0,virgen:0,otras:[]};
@@ -759,9 +771,10 @@ $('aPrev').onclick = async ()=>{
       nums.forEach(n=>{ const e=est[n]; if(!e) cnt.nuevas++; else if(e==='virgen') cnt.virgen++; else cnt.otras.push(n+' ('+e+')'); }); state.altaOrigen='manual';
     }
     state.altaPrev=nums.filter(n=>!est[n]||est[n]==='virgen');
-    const p=state.altaPrev;
-    $('aPrevBox').innerHTML=`<div class="msg ${cnt.otras.length?'warn':'ok'}">${p.length} caravanas para dar de alta${cant>0?` (vírgenes ${p[0]} → ${p[p.length-1]})`:` · ${cnt.nuevas} nuevas, ${cnt.virgen} vírgenes que pasan a activas`}${cnt.otras.length?` · ${cnt.otras.length} se omiten (ya activas/salida/baja/anuladas): ${esc(cnt.otras.slice(0,10).join(', '))}${cnt.otras.length>10?'…':''}`:''} · propietario ${esc(propNombre(+$('aProp').value))}, ${esc($('aCat').value)}, bolsa ${esc($('aBolsa').value.trim().toUpperCase()||'CLASIFICAR')}, alta ${fmtF($('aFecha').value)}${$('aDte').value.trim()?', DTE '+esc($('aDte').value.trim()):''}</div>`;
-    $('aTabla').innerHTML='<tr><th>#</th><th>Caravana</th><th>Estado actual</th></tr>'+p.map((n,i)=>`<tr><td class="muted">${i+1}</td><td class="mono">${n}</td><td>${est[n]?tag(est[n]):'<span class="tag pendiente">nueva</span>'}</td></tr>`).join('');
+    const p=state.altaPrev; state.altaCats=categoriasPorCaravana(p);
+    const resCats=Object.entries(p.reduce((a,x)=>{a[state.altaCats[x]]=(a[state.altaCats[x]]||0)+1;return a;},{})).map(([k,v])=>`${v} ${k}`).join(', ');
+    $('aPrevBox').innerHTML=`<div class="msg ${cnt.otras.length?'warn':'ok'}">${p.length} caravanas para dar de alta${cant>0?` (vírgenes ${p[0]} → ${p[p.length-1]})`:` · ${cnt.nuevas} nuevas, ${cnt.virgen} vírgenes que pasan a activas`}${cnt.otras.length?` · ${cnt.otras.length} se omiten (ya activas/salida/baja/anuladas): ${esc(cnt.otras.slice(0,10).join(', '))}${cnt.otras.length>10?'…':''}`:''} · propietario ${esc(propNombre(+$('aProp').value))}, ${esc(resCats)}, bolsa ${esc($('aBolsa').value.trim().toUpperCase()||'CLASIFICAR')}, alta ${fmtF($('aFecha').value)}${$('aDte').value.trim()?', DTE '+esc($('aDte').value.trim()):''}</div>`;
+    $('aTabla').innerHTML='<tr><th>#</th><th>Caravana</th><th>Categoría</th><th>Estado actual</th></tr>'+p.map((n,i)=>`<tr><td class="muted">${i+1}</td><td class="mono">${n}</td><td>${esc(state.altaCats[n])}</td><td>${est[n]?tag(est[n]):'<span class="tag pendiente">nueva</span>'}</td></tr>`).join('');
     $('aTablaWrap').classList.toggle('hidden',!p.length);
     $('aConf').disabled=$('aConfDdjj').disabled=$('aCopiar').disabled=!p.length;
   }catch(e){ msg('aPrevBox','err',e.message); $('aTablaWrap').classList.add('hidden'); state.altaPrev=null; $('aConf').disabled=$('aConfDdjj').disabled=$('aCopiar').disabled=true; }
@@ -771,11 +784,15 @@ const confirmarAltaManual = async (conDdjj)=>{
   try{ exigirTurno(); if(!state.altaPrev?.length) throw new Error('Hacé primero la vista previa'); $('aConf').disabled=$('aConfDdjj').disabled=true;
     const renspa=$('aRenspa').value.trim(), cuig=$('aCuig').value.trim().toUpperCase(), proc=$('aProc').value.trim(), dte=$('aDte').value.trim();
     const obs=[$('aObs').value.trim(), renspa&&'RENSPA: '+renspa, cuig&&'CUIG: '+cuig].filter(Boolean).join(' · ')||null;
-    const nums=state.altaPrev.slice();
-    const r=await rpc('alta_masiva',{p_numeros:nums,p_propietario_id:+$('aProp').value,p_categoria:$('aCat').value,p_fecha_alta:$('aFecha').value,p_dte:dte||null,p_origen:state.altaOrigen,p_fuente:'manual',p_usuario:USER,p_nro_tropa:null,p_compra_id:$('vCompra').value&&state.altaOrigen==='virgen'?+$('vCompra').value:null,p_observaciones:obs,p_procedencia:proc||null,p_bolsa:$('aBolsa').value.trim()||null});
-    msg('aPrevBox','ok',`Alta confirmada: ${r.total} caravanas (${r.nuevas} nuevas, ${r.virgenes_usadas} vírgenes), bolsa ${r.bolsa}. ${nums[0]} → ${nums[nums.length-1]}`);
+    const nums=state.altaPrev.slice(); const cats=state.altaCats||categoriasPorCaravana(nums);
+    const grupos={}; nums.forEach(x=>(grupos[cats[x]] ??= []).push(x));
+    const r={total:0,nuevas:0,virgenes_usadas:0,omitidas:[],bolsa:''};
+    for(const [cat,gn] of Object.entries(grupos)){
+      const g=await rpc('alta_masiva',{p_numeros:gn,p_propietario_id:+$('aProp').value,p_categoria:cat,p_fecha_alta:$('aFecha').value,p_dte:dte||null,p_origen:state.altaOrigen,p_fuente:'manual',p_usuario:USER,p_nro_tropa:null,p_compra_id:$('vCompra').value&&state.altaOrigen==='virgen'?+$('vCompra').value:null,p_observaciones:obs,p_procedencia:proc||null,p_bolsa:$('aBolsa').value.trim()||null});
+      r.total+=g.total; r.nuevas+=g.nuevas; r.virgenes_usadas+=g.virgenes_usadas; r.omitidas=r.omitidas.concat(g.omitidas||[]); r.bolsa=g.bolsa; }
+    msg('aPrevBox','ok',`Alta confirmada: ${r.total} caravanas (${r.nuevas} nuevas, ${r.virgenes_usadas} vírgenes; ${Object.entries(grupos).map(([k,v])=>v.length+' '+k).join(', ')}), bolsa ${r.bolsa}. ${nums[0]} → ${nums[nums.length-1]}`);
     if(conDdjj) generarDDJJ({dte, titular:proc, establecimiento:proc, renspa, cuig, fecha:$('aFecha').value, numeros:nums.filter(x=>!(r.omitidas||[]).includes(x))});
-    $('aLista').value=''; $('aRd').value=$('aRh').value=''; $('vCant').value=''; state.altaPrev=null; $('aCopiar').disabled=false; cargarCompras();
+    $('aLista').value=''; $('aRd').value=$('aRh').value=''; $('vCant').value=''; $('aCats').value=''; state.altaPrev=null; state.altaCats=null; $('aCopiar').disabled=false; cargarCompras();
   }catch(e){ msg('aPrevBox','err',e.message); $('aConf').disabled=$('aConfDdjj').disabled=false; }
 };
 $('aConf').onclick=()=>confirmarAltaManual(false); $('aConfDdjj').onclick=()=>confirmarAltaManual(true);
