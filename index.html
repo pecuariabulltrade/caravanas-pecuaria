@@ -34,7 +34,7 @@ th{background:var(--grey-l);position:sticky;top:0;font-weight:600;cursor:pointer
 .tag.virgen,.tag.pendiente,.tag.pendiente_dte{background:var(--blue-l);color:var(--blue)}
 .tag.salida,.tag.revisar,.tag.corriendo{background:var(--amber-l);color:var(--amber)}
 .tag.baja,.tag.dada_de_baja,.tag.en_padron_salida{background:var(--grey-l);color:var(--grey)}
-.tag.anulada,.tag.sin_alta,.tag.error{background:var(--red-l);color:var(--red)}
+.tag.anulada,.tag.sin_alta,.tag.error,.tag.sin_stock{background:var(--red-l);color:var(--red)}
 tr.g-en_padron td{background:#f1f8f1}tr.g-en_padron_salida td{background:#f4f4f4;color:var(--grey)}tr.g-revisar td{background:#fff8e8}tr.g-sin_alta td{background:#fdf0ef}tr.g-dada_de_baja td{color:var(--grey)}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px}.kpi b{font-size:26px;display:block}.kpi span{color:var(--grey);font-size:12px}
@@ -66,6 +66,7 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
   <button data-t="inicio" class="on">Inicio</button>
   <button data-t="ingresos">Ingresos <span class="n" id="nIng"></span></button>
   <button data-t="egresos">Egresos <span class="n" id="nEgr"></span></button>
+  <button data-t="stock">Stock <span class="n" id="nStk"></span></button>
   <button data-t="consulta">Consulta</button>
   <button data-t="altam">Alta manual</button>
   <button data-t="bajam">Baja manual</button>
@@ -155,6 +156,31 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
     </div>
   </div>
   <div class="tw"><table id="eTabla"></table></div>
+</section>
+
+<!-- STOCK -->
+<section id="t-stock" class="tab hidden">
+  <div class="kpis" id="sKpis"></div>
+  <div class="card">
+    <div class="row">
+      <label class="f">Situación <select id="sSit"><option value="">Todo el stock</option><option value="activa">Activas en el padrón</option><option value="sin_alta">Sin alta en el padrón</option><option value="baja">Ya dadas de baja en SENASA</option><option value="salida">Con salida marcada (revisar)</option><option value="anulada">Anuladas</option><option value="sin_stock">Activas en el padrón que no están en el stock</option></select></label>
+      <label class="f">Propietario WinCampo <select id="sHot"><option value="">Todos</option></select></label>
+      <label class="f">Propietario padrón <select id="sProp"><option value="">Todos</option></select></label>
+      <label class="f">Categoría vs. padrón <select id="sCat"><option value="">Todas</option><option value="ok">Coincide</option><option value="dif">No coincide</option></select></label>
+      <label class="f">Tropa <input id="sTropa" placeholder="PEG.HUI.…"></label>
+      <label class="f">Caravana (o parte) <input id="sNum" class="mono" style="width:150px"></label>
+      <button class="b" id="sBuscar">Buscar</button>
+      <button class="b" id="sExcel">Exportar Excel</button>
+      <span class="muted" id="sInfo"></span>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="b s" id="sSelTodo">Marcar todo lo filtrado</button>
+      <button class="b s" id="sSelNada">Desmarcar</button>
+      <span class="sp"></span><span id="sCount" class="muted">0 seleccionadas</span>
+      <button class="b" id="sCopiar">Copiar caravanas</button>
+    </div>
+  </div>
+  <div class="tw"><table id="sTabla"></table></div>
 </section>
 
 <!-- CONSULTA -->
@@ -366,9 +392,9 @@ const addDias = (d,n) => new Date(new Date(d+'T00:00:00').getTime()+n*864e5).toI
 const fmtTs = t => t ? new Date(t).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}) : '';
 const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const tag = s => `<span class="tag ${esc(s)}">${esc(SIT[s]||s)}</span>`;
-const SIT = {pendiente:'Pendiente de alta',en_padron:'Ya en el padrón',en_padron_salida:'En el padrón, con salida',revisar:'Revisar: reingresó después de salir',pendiente_dte:'Pendiente de DTE',dada_de_baja:'Dada de baja',sin_alta:'Salió sin alta',virgen:'Virgen',activa:'Activa',salida:'Salida',baja:'Baja',anulada:'Anulada',ok:'OK',error:'Error',corriendo:'Corriendo'};
+const SIT = {pendiente:'Pendiente de alta',en_padron:'Ya en el padrón',en_padron_salida:'En el padrón, con salida',revisar:'Revisar: reingresó después de salir',pendiente_dte:'Pendiente de DTE',dada_de_baja:'Dada de baja',sin_alta:'Salió sin alta',sin_stock:'En el padrón, no está en el stock',virgen:'Virgen',activa:'Activa',salida:'Salida',baja:'Baja',anulada:'Anulada',ok:'OK',error:'Error',corriendo:'Corriendo'};
 let USER = null, PROPS = [], TURNO = null;
-const state = { ing:{rows:[],sel:new Set()}, egr:{rows:[],sel:new Set()}, con:{rows:[],sel:new Set()}, movs:[], altaPrev:null, bajaPrev:null };
+const state = { ing:{rows:[],sel:new Set()}, egr:{rows:[],sel:new Set()}, con:{rows:[],sel:new Set()}, stk:{rows:[],sel:new Set(),todo:null,sinStock:null}, movs:[], altaPrev:null, bajaPrev:null };
 
 function toast(m, ms=2500){ const t=$('toast'); t.textContent=m; t.style.display='block'; setTimeout(()=>t.style.display='none',ms); }
 function msg(el, kind, text){ $(el).innerHTML = `<div class="msg ${kind}">${esc(text)}</div>`; }
@@ -413,7 +439,7 @@ async function iniciar(){
   fechasDDMM(document);
   $('login').classList.add('hidden'); $('pUser').textContent = USER;
   const {data} = await sb.from('propietarios').select('*').order('orden'); PROPS = data||[];
-  ['eProp','cProp','mProp'].forEach(s=>llenarProps(s,true)); ['aProp'].forEach(s=>llenarProps(s,false));
+  ['eProp','cProp','mProp','sProp'].forEach(s=>llenarProps(s,true)); ['aProp'].forEach(s=>llenarProps(s,false));
   ['aFecha','bFecha','kFecha'].forEach(i=>$(i).value=hoy());
   $('iDesde').value=diasAtras(60); $('iHasta').value=hoy(); $('eDesde').value=diasAtras(120); $('eHasta').value=hoy(); $('mDesde').value=diasAtras(30); $('mHasta').value=hoy();
   await Promise.all([refrescarTurno(), refrescarSync(), contarPendientes()]);
@@ -473,7 +499,7 @@ function mostrarTab(t){
   document.querySelectorAll('.tab').forEach(s=>s.classList.toggle('hidden', s.id!=='t-'+t));
   $('side').classList.remove('on');
   if(TABS_CARGA.has(t) && turnoLibre()) tomarTurno();
-  ({inicio:cargarInicio, ingresos:cargarIngresos, egresos:cargarEgresos, consulta:cargarConsulta, movs:cargarMovs, config:cargarConfig, altam:cargarCompras, clasif:cargarClasif})[t]?.();
+  ({inicio:cargarInicio, ingresos:cargarIngresos, egresos:cargarEgresos, stock:cargarStock, consulta:cargarConsulta, movs:cargarMovs, config:cargarConfig, altam:cargarCompras, clasif:cargarClasif})[t]?.();
 }
 $('nav').onclick = e=>{ const b=e.target.closest('button'); if(b) mostrarTab(b.dataset.t); };
 
@@ -545,7 +571,7 @@ function pintarIngresos(){
 }
 function contarSel(k, elC, elB){ const n=state[k].sel.size; let txt=`${n} seleccionadas`;
   if(k==='ing'&&n){ const c={}; state.ing.rows.filter(r=>state.ing.sel.has(r.caravana)).forEach(r=>{ const k2=r.categoria||'sin cat.'; c[k2]=(c[k2]||0)+1; }); txt+=' ('+Object.entries(c).map(([a,b])=>`${a} ${b}`).join(', ')+')'; $('iCopiar').disabled=!n; }
-  $(elC).textContent=txt; $(elB).disabled=!n; }
+  $(elC).textContent=txt; if(elB) $(elB).disabled=!n; }
 $('iTabla').onchange = e=>{ const c=e.target;
   if(c.id==='iSelAll'){ state.ing.sel.clear(); if(c.checked) state.ing.rows.filter(r=>r.situacion==='pendiente').forEach(r=>state.ing.sel.add(r.caravana)); pintarIngresos(); return; }
   if(c.dataset.c){ c.checked?state.ing.sel.add(c.dataset.c):state.ing.sel.delete(c.dataset.c); }
@@ -711,6 +737,45 @@ function panelBaja(nums, o){
     }catch(e){ msg('pMsg','err',e.message); $('pOk').disabled=false; }
   };
 }
+
+// ---------- STOCK ----------
+const SIT_STOCK = {activa:'Activa en el padrón', sin_alta:'Sin alta en el padrón', baja:'Dada de baja en SENASA', salida:'Con salida marcada (revisar)', anulada:'Anulada', sin_stock:'En el padrón, no está en el stock'};
+async function cargarStock(forzar){
+  const st=state.stk;
+  try{
+    if(forzar||!st.todo){
+      const [todo, sinStock] = await Promise.all([all(sb.from('v_stock_cruce').select('*').order('caravana')), all(sb.from('v_padron_sin_stock').select('*').order('caravana'))]);
+      st.todo=todo; st.sinStock=sinStock.map(r=>({...r, situacion:'sin_stock', motivo:'Activa en el padrón SENASA pero hoy no está en el stock de WinCampo'+(r.ultimo_egreso_wc?` (último egreso WinCampo ${fmtF(r.ultimo_egreso_wc)})`:'')}));
+      const hots=[...new Set(todo.map(r=>r.hotelero).filter(Boolean))].sort(); const sel=$('sHot'); const cur=sel.value; sel.innerHTML='<option value="">Todos</option>'+hots.map(h=>`<option>${esc(h)}</option>`).join(''); sel.value=cur;
+      const n=todo.filter(r=>r.situacion!=='activa'||r.categoria_ok===false).length; $('nStk').textContent=n||'';
+    }
+    const sit=$('sSit').value, hot=$('sHot').value, prop=$('sProp').value, cat=$('sCat').value, tropa=$('sTropa').value.trim().toUpperCase(), num=$('sNum').value.trim().toUpperCase();
+    let rows = sit==='sin_stock' ? st.sinStock : st.todo.filter(r=>!sit||r.situacion===sit);
+    rows = rows.filter(r=>(!hot||r.hotelero===hot)&&(!prop||String(r.propietario_id)===prop)&&(!cat||(cat==='ok'?r.categoria_ok===true:r.categoria_ok===false))&&(!tropa||(r.nro_tropa||'').toUpperCase().includes(tropa))&&(!num||r.caravana.includes(num)));
+    st.rows=rows; st.sel.clear();
+    const t=st.todo, c=k=>t.filter(r=>r.situacion===k).length;
+    $('sKpis').innerHTML=[['En stock WinCampo hoy',t.length,''],['Activas en el padrón',c('activa'),'activa'],['Sin alta en el padrón',c('sin_alta'),'sin_alta'],['Ya dadas de baja en SENASA',c('baja'),'baja'],['Con salida marcada',c('salida'),'salida'],['Categoría distinta al padrón',t.filter(r=>r.categoria_ok===false).length,'cat_dif'],['En el padrón sin stock',st.sinStock.length,'sin_stock']]
+      .map(([l,v,k])=>`<div class="kpi" data-k="${k}" style="cursor:pointer" title="Filtrar"><b>${v}</b><span>${l}</span></div>`).join('');
+    const ts=t[0]?.sincronizado_en; $('sInfo').textContent=`${rows.length} filas`+(ts?` · stock al ${fmtTs(ts)}`:' · todavía no se sincronizó el stock (corré la sincronización)');
+  }catch(e){ return toast(e.message); }
+  pintarStock();
+}
+function pintarStock(){
+  const st=state.stk, rows=st.rows;
+  let h=`<tr><th><input type="checkbox" id="sSelAll" ${rows.length&&st.sel.size===rows.length?'checked':''} ${rows.length?'':'disabled'}></th><th>Caravana</th><th>Situación</th><th>Motivo</th><th>Cat. WinCampo</th><th>Cat. padrón</th><th>Categoría</th><th>Propietario WinCampo</th><th>Propietario padrón</th><th>Tropa</th></tr>`;
+  rows.forEach(r=>{ h+=`<tr class="g-${r.situacion}"><td><input type="checkbox" data-c="${r.caravana}" ${st.sel.has(r.caravana)?'checked':''}></td><td class="mono">${r.caravana}</td><td><span class="tag ${r.situacion}">${esc(SIT_STOCK[r.situacion]||r.situacion)}</span></td><td class="muted">${esc(r.motivo||'')}</td><td>${esc(r.categoria_wc||'')}${r.categoria?' <span class="muted">('+esc(r.categoria)+')</span>':''}</td><td><b>${esc(r.categoria_padron||'')}</b></td><td>${r.categoria_ok===true?'<span class="tag ok">Coincide</span>':r.categoria_ok===false?`<span class="tag error">No coincide: padrón ${esc(r.categoria_padron)}, WinCampo ${esc(r.categoria)}</span>`:''}</td><td>${esc(r.hotelero||'')}</td><td>${esc(r.propietario||'')}</td><td>${esc(r.nro_tropa||'')}</td></tr>`; });
+  if(!rows.length) h+='<tr><td colspan="10" class="muted">Sin caravanas para ese filtro</td></tr>';
+  $('sTabla').innerHTML=h; contarSel('stk','sCount',null);
+}
+$('sTabla').onchange = e=>{ const c=e.target;
+  if(c.id==='sSelAll'){ state.stk.sel.clear(); if(c.checked) state.stk.rows.forEach(r=>state.stk.sel.add(r.caravana)); pintarStock(); return; }
+  if(c.dataset.c){ c.checked?state.stk.sel.add(c.dataset.c):state.stk.sel.delete(c.dataset.c); contarSel('stk','sCount',null); } };
+$('sKpis').onclick = e=>{ const k=e.target.closest('.kpi'); if(!k) return; if(k.dataset.k==='cat_dif'){ $('sSit').value=''; $('sCat').value='dif'; } else { $('sSit').value=k.dataset.k; $('sCat').value=''; } cargarStock(); };
+$('sBuscar').onclick=()=>cargarStock(true); $('sSit').onchange=()=>cargarStock(); $('sCat').onchange=()=>cargarStock(); $('sHot').onchange=()=>cargarStock(); $('sProp').onchange=()=>cargarStock();
+['sTropa','sNum'].forEach(i=>$(i).addEventListener('keydown',e=>{ if(e.key==='Enter') cargarStock(); }));
+$('sSelTodo').onclick=()=>{state.stk.rows.forEach(r=>state.stk.sel.add(r.caravana));pintarStock();}; $('sSelNada').onclick=()=>{state.stk.sel.clear();pintarStock();};
+$('sCopiar').onclick=async ()=>{ const nums=state.stk.sel.size?[...state.stk.sel]:state.stk.rows.map(r=>r.caravana); if(!nums.length) return toast('No hay caravanas para copiar'); const txt=nums.join('\n'); try{ await navigator.clipboard.writeText(txt); toast(`${nums.length} caravanas copiadas al portapapeles`); }catch(e){ prompt('Copiá las caravanas:', txt.replace(/\n/g,' ')); } };
+$('sExcel').onclick=()=>{ const rows=state.stk.rows.map(r=>({Caravana:r.caravana,Situación:SIT_STOCK[r.situacion]||r.situacion,Motivo:r.motivo||'','Cat. WinCampo':r.categoria_wc||'','Cat. WinCampo (padrón)':r.categoria||'','Cat. padrón':r.categoria_padron||'',Categoría:r.categoria_ok===true?'Coincide':r.categoria_ok===false?'No coincide':'','Propietario WinCampo':r.hotelero||'','Propietario padrón':r.propietario||'',Tropa:r.nro_tropa||''})); exportXlsx(`stock_vs_padron_${hoy()}.xlsx`,{Stock:rows}); };
 
 // ---------- CONSULTA ----------
 async function cargarConsulta(){

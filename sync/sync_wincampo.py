@@ -6,7 +6,7 @@ hacia Supabase (tablas wc_ingresos / wc_egresos) y marca las salidas del padrón
 
 Fuentes (API REST de WinCampo Web, misma que el portal PEGSA):
   - lst_trazabilidad (ingreso_caravana) -> Ingresos por Caravana: una fila por animal con RFID, tropa, fecha, categoría
-  - caravanas_stock              -> stock actual (complemento)
+  - caravanas_stock              -> stock actual (complemento de ingresos + foto en wc_stock para la pestaña Stock)
   - lst_egresos_hacienda         -> egresos por caravana (MOTIVO V=venta, M=muerte, T=traslado)
   - lst_movimiento_hacienda      -> tropas de ingreso (DTE_INGRESO, CONSIGNATARIO, ORIGEN) para enriquecer
 
@@ -231,6 +231,21 @@ def armar_ingresos(stock, egresos, tropas, trazabilidad=()):
     return list(filas.values())
 
 
+def armar_stock(stock):
+    """Foto del stock actual: una fila por RFID 032 con categoría, propietario WinCampo y tropa.
+    Reemplaza wc_stock entera en cada corrida."""
+    filas = {}
+    for x in stock:
+        rfid = (x.get("RFID") or "").strip()
+        if not RFID_OK.match(rfid):
+            continue
+        filas[rfid] = {
+            "caravana": rfid, "nro_tropa": limpiar(x.get("NRO_TROPA")), "hotelero": limpiar(x.get("HOTELERO")),
+            "categoria_wc": limpiar(x.get("CATEGORIA_ACTUAL") or x.get("CATEGORIA") or x.get("CATEGORIA_INGRESO")),
+        }
+    return list(filas.values())
+
+
 def armar_egresos(egresos):
     filas = {}
     for x in egresos:
@@ -271,6 +286,11 @@ def correr(sb, desde, hasta, sync_id=None):
         n_e = sb.upsert("wc_egresos", egr_rows)
         salidas = sb.rpc("marcar_salidas") or 0
         log.info("Salidas marcadas en el padrón: %s", salidas)
+        try:
+            n_s = sb.rpc("reemplazar_stock", {"p_filas": armar_stock(stock)})
+            log.info("Stock actual cargado: %s caravanas 032", n_s)
+        except Exception as e:  # el stock es informativo: no frena la sincronización
+            log.warning("No se pudo cargar el stock: %s", e)
         sb.patch("sincronizaciones", f"id=eq.{sync_id}", {"estado": "ok", "fin": datetime.now().astimezone().isoformat(),
                                                           "ingresos_nuevos": n_i, "egresos_nuevos": n_e, "salidas_marcadas": salidas})
         return True
