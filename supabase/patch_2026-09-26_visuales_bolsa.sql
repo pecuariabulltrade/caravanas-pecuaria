@@ -117,3 +117,22 @@ grant select on v_caravanas to authenticated;
 
 revoke execute on all functions in schema public from anon, public;
 grant execute on all functions in schema public to authenticated;
+
+-- 26/09/2026: en Ingresos, un ingreso ANTERIOR a la salida de la caravana no es para revisar
+-- (es la compra original de un animal que después se vendió o murió): situación 'en_padron_salida'.
+-- 'revisar' queda solo para ingresos posteriores a la fecha de salida (reingreso real).
+drop view if exists v_ingresos_cruce;
+create view v_ingresos_cruce as
+select w.*,
+       c.estado as estado_padron, c.propietario_id, p.nombre as propietario, c.categoria as categoria_padron,
+       c.fecha_alta, c.dte_alta, c.fecha_salida, c.motivo_salida,
+       case when c.numero is null or c.estado = 'virgen' then 'pendiente'
+            when c.estado = 'activa' then 'en_padron'
+            when c.estado in ('salida','baja') and w.fecha_ingreso > coalesce(c.fecha_salida, c.fecha_baja) then 'revisar'
+            when c.estado in ('salida','baja') then 'en_padron_salida'
+            else 'anulada' end as situacion
+  from wc_ingresos w
+  left join caravanas c on c.numero = w.caravana
+  left join propietarios p on p.id = c.propietario_id;
+alter view v_ingresos_cruce set (security_invoker = true);
+grant select on v_ingresos_cruce to authenticated;

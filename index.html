@@ -33,9 +33,9 @@ th{background:var(--grey-l);position:sticky;top:0;font-weight:600;cursor:pointer
 .tag.activa,.tag.en_padron,.tag.ok{background:var(--green-l);color:var(--green)}
 .tag.virgen,.tag.pendiente,.tag.pendiente_dte{background:var(--blue-l);color:var(--blue)}
 .tag.salida,.tag.revisar,.tag.corriendo{background:var(--amber-l);color:var(--amber)}
-.tag.baja,.tag.dada_de_baja{background:var(--grey-l);color:var(--grey)}
+.tag.baja,.tag.dada_de_baja,.tag.en_padron_salida{background:var(--grey-l);color:var(--grey)}
 .tag.anulada,.tag.sin_alta,.tag.error{background:var(--red-l);color:var(--red)}
-tr.g-en_padron td{background:#f1f8f1}tr.g-revisar td{background:#fff8e8}tr.g-sin_alta td{background:#fdf0ef}tr.g-dada_de_baja td{color:var(--grey)}
+tr.g-en_padron td{background:#f1f8f1}tr.g-en_padron_salida td{background:#f4f4f4;color:var(--grey)}tr.g-revisar td{background:#fff8e8}tr.g-sin_alta td{background:#fdf0ef}tr.g-dada_de_baja td{color:var(--grey)}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px}.kpi b{font-size:26px;display:block}.kpi span{color:var(--grey);font-size:12px}
 .side{position:fixed;right:0;top:0;height:100%;width:380px;background:#fff;border-left:1px solid var(--line);box-shadow:-4px 0 16px rgba(0,0,0,.08);padding:16px;overflow:auto;z-index:20;display:none}
@@ -100,7 +100,7 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
       <label class="f">Origen <input id="iOrigen"></label>
       <label class="f">Propietario WinCampo <select id="iHot"><option value="">Todos</option></select></label>
       <label class="f">Categoría <select id="iCat"><option value="">Todas</option><option>TORO</option><option>VACA</option><option>HEMBRA</option><option>MACHO</option></select></label>
-      <label class="f">Situación <select id="iSit"><option value="">Todas</option><option value="pendiente">Pendiente de alta</option><option value="en_padron">Ya en el padrón</option><option value="revisar">Revisar (salida/baja)</option></select></label>
+      <label class="f">Situación <select id="iSit"><option value="">Todas</option><option value="pendiente">Pendiente de alta</option><option value="en_padron">Ya en el padrón</option><option value="en_padron_salida">En el padrón, con salida</option><option value="revisar">Revisar (reingreso después de salir)</option></select></label>
       <button class="b" id="iBuscar">Buscar</button>
       <span class="muted" id="iInfo"></span>
     </div>
@@ -366,7 +366,7 @@ const addDias = (d,n) => new Date(new Date(d+'T00:00:00').getTime()+n*864e5).toI
 const fmtTs = t => t ? new Date(t).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}) : '';
 const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const tag = s => `<span class="tag ${esc(s)}">${esc(SIT[s]||s)}</span>`;
-const SIT = {pendiente:'Pendiente de alta',en_padron:'Ya en el padrón',revisar:'Revisar',pendiente_dte:'Pendiente de DTE',dada_de_baja:'Dada de baja',sin_alta:'Salió sin alta',virgen:'Virgen',activa:'Activa',salida:'Salida',baja:'Baja',anulada:'Anulada',ok:'OK',error:'Error',corriendo:'Corriendo'};
+const SIT = {pendiente:'Pendiente de alta',en_padron:'Ya en el padrón',en_padron_salida:'En el padrón, con salida',revisar:'Revisar: reingresó después de salir',pendiente_dte:'Pendiente de DTE',dada_de_baja:'Dada de baja',sin_alta:'Salió sin alta',virgen:'Virgen',activa:'Activa',salida:'Salida',baja:'Baja',anulada:'Anulada',ok:'OK',error:'Error',corriendo:'Corriendo'};
 let USER = null, PROPS = [], TURNO = null;
 const state = { ing:{rows:[],sel:new Set()}, egr:{rows:[],sel:new Set()}, con:{rows:[],sel:new Set()}, movs:[], altaPrev:null, bajaPrev:null };
 
@@ -603,11 +603,11 @@ $('iAlta').onclick=()=>{
     const ddjj={dte, titular:$('pProc').value.trim(), establecimiento:$('pProc').value.trim(), renspa:$('pRenspa').value.trim(), cuig:$('pCuig').value.trim().toUpperCase(), fecha:$('pFecha').value, numeros:rows.map(r=>r.caravana)};
     const obsDdjj=[ddjj.renspa&&'RENSPA: '+ddjj.renspa, ddjj.cuig&&'CUIG: '+ddjj.cuig].filter(Boolean).join(' · ');
     const obs=[$('pObs').value.trim(), obsDdjj].filter(Boolean).join(' · ')||null;
-    $('pOk').disabled=$('pOkDdjj').disabled=true; let tot=0, om=[];
+    $('pOk').disabled=$('pOkDdjj').disabled=true; let tot=0, om=[], sal=0;
     try{ for(const [k,nums] of Object.entries(porCat)){ const [cat,tropa]=k.split('|');
         const r=await rpc('alta_masiva',{p_numeros:nums,p_propietario_id:+$('pProp').value,p_categoria:cat,p_fecha_alta:$('pFecha').value,p_dte:dte,p_origen:'wincampo',p_fuente:'wincampo',p_usuario:USER,p_nro_tropa:tropa||null,p_compra_id:null,p_observaciones:obs,p_procedencia:$('pProc').value.trim()||null,p_bolsa:$('pBolsa').value.trim()||'FEEDLOT'});
-        tot+=r.total; om=om.concat(r.omitidas||[]); }
-      toast(`${tot} caravanas dadas de alta${om.length?`, ${om.length} omitidas`:''}`,4000);
+        tot+=r.total; om=om.concat(r.omitidas||[]); sal+=r.salidas||0; }
+      toast(`${tot} caravanas dadas de alta${om.length?`, ${om.length} omitidas`:''}${sal?`. ${sal} ya salieron según WinCampo: quedaron en Egresos pendientes de DTE`:''}`,sal?7000:4000);
       if(conDdjj) generarDDJJ({...ddjj, numeros: ddjj.numeros.filter(x=>!om.includes(x))});
       cerrarPanel(); cargarIngresos(); contarPendientes();
     }catch(e){ msg('pMsg','err',e.message); $('pOk').disabled=$('pOkDdjj').disabled=false; }
@@ -797,11 +797,11 @@ const confirmarAltaManual = async (conDdjj)=>{
     const obs=[$('aObs').value.trim(), renspa&&'RENSPA: '+renspa, cuig&&'CUIG: '+cuig].filter(Boolean).join(' · ')||null;
     const nums=state.altaPrev.slice(); const cats=state.altaCats||categoriasPorCaravana(nums);
     const grupos={}; nums.forEach(x=>(grupos[cats[x]] ??= []).push(x));
-    const r={total:0,nuevas:0,virgenes_usadas:0,omitidas:[],bolsa:''};
+    const r={total:0,nuevas:0,virgenes_usadas:0,omitidas:[],bolsa:'',salidas:0};
     for(const [cat,gn] of Object.entries(grupos)){
       const g=await rpc('alta_masiva',{p_numeros:gn,p_propietario_id:+$('aProp').value,p_categoria:cat,p_fecha_alta:$('aFecha').value,p_dte:dte||null,p_origen:state.altaOrigen,p_fuente:'manual',p_usuario:USER,p_nro_tropa:null,p_compra_id:$('vCompra').value&&state.altaOrigen==='virgen'?+$('vCompra').value:null,p_observaciones:obs,p_procedencia:proc||null,p_bolsa:$('aBolsa').value.trim()||null});
-      r.total+=g.total; r.nuevas+=g.nuevas; r.virgenes_usadas+=g.virgenes_usadas; r.omitidas=r.omitidas.concat(g.omitidas||[]); r.bolsa=g.bolsa; }
-    msg('aPrevBox','ok',`Alta confirmada: ${r.total} caravanas (${r.nuevas} nuevas, ${r.virgenes_usadas} vírgenes; ${Object.entries(grupos).map(([k,v])=>v.length+' '+k).join(', ')}), bolsa ${r.bolsa}. ${nums[0]} → ${nums[nums.length-1]}`);
+      r.total+=g.total; r.nuevas+=g.nuevas; r.virgenes_usadas+=g.virgenes_usadas; r.omitidas=r.omitidas.concat(g.omitidas||[]); r.bolsa=g.bolsa; r.salidas+=g.salidas||0; }
+    msg('aPrevBox','ok',`Alta confirmada: ${r.total} caravanas (${r.nuevas} nuevas, ${r.virgenes_usadas} vírgenes; ${Object.entries(grupos).map(([k,v])=>v.length+' '+k).join(', ')}), bolsa ${r.bolsa}. ${nums[0]} → ${nums[nums.length-1]}${r.salidas?`. ${r.salidas} ya salieron según WinCampo: quedaron en Egresos pendientes de DTE`:''}`);
     if(conDdjj) generarDDJJ({dte, titular:proc, establecimiento:proc, renspa, cuig, fecha:$('aFecha').value, numeros:nums.filter(x=>!(r.omitidas||[]).includes(x))});
     $('aLista').value=''; $('aRd').value=$('aRh').value=''; $('vCant').value=''; ['VACA','MACHO','HEMBRA','TORO'].forEach(c=>$('aQ_'+c).value=''); $('aMultiTot').textContent=''; state.altaPrev=null; state.altaCats=null; $('aCopiar').disabled=false; cargarCompras();
   }catch(e){ msg('aPrevBox','err',e.message); $('aConf').disabled=$('aConfDdjj').disabled=false; }
