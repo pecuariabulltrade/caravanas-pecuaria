@@ -1016,7 +1016,7 @@ function pintarAltasBajas(){
   const st=state.ab, g=st.grupos;
   let h=`<tr><th></th><th>Tipo</th><th>DTE</th><th>Fecha</th><th>Caravanas</th><th>Propietario</th><th>Categorías</th><th>Procedencia / destino</th><th>Tropa</th><th>Origen</th><th>90 días</th><th>Observación</th><th>Último cargado</th><th></th></tr>`;
   g.forEach(x=>{ const k=x.tipo+'|'+x.dte; const ab=st.abiertos.has(k); const det=st.det[k]||[]; const selG=det.length&&det.every(r=>st.sel.has(r.numero));
-    h+=`<tr class="tropa-h" data-g="${esc(k)}" style="cursor:pointer"><td>${ab?`<input type="checkbox" data-gsel="${esc(k)}" ${selG?'checked':''} title="Marcar todas las del DTE">`:''}</td><td>${x.tipo==='alta'?'<span class="tag activa">Alta</span>':'<span class="tag baja">Baja</span>'}</td><td><b>${esc(x.dte||'(sin DTE)')}</b></td><td>${fmtF(x.fecha_desde)}${x.fecha_hasta!==x.fecha_desde?' → '+fmtF(x.fecha_hasta):''}</td><td><b>${x.caravanas}</b></td><td class="cel" title="${esc(x.propietarios||'')}">${esc(x.propietarios||'')}</td><td class="cel">${esc(x.categorias||'')}</td><td class="cel" title="${esc(x.origen_destino||'')}">${esc(x.origen_destino||'')}</td><td class="cel" title="${esc(x.tropas||'')}">${esc(x.tropas||'')}</td><td class="muted cel">${esc(x.fuente||'')}</td><td></td><td></td><td>${fmtTs(x.ultimo_cargado)}</td><td>${x.tipo==='alta'&&x.dte?`<button class="b s" data-ddjj="${esc(x.dte)}">DDJJ</button> `:''}<button class="b s" data-abrir="${esc(k)}">${ab?'Cerrar':'Ver caravanas'}</button></td></tr>`;
+    h+=`<tr class="tropa-h" data-g="${esc(k)}" style="cursor:pointer"><td>${ab?`<input type="checkbox" data-gsel="${esc(k)}" ${selG?'checked':''} title="Marcar todas las del DTE">`:''}</td><td>${x.tipo==='alta'?'<span class="tag activa">Alta</span>':'<span class="tag baja">Baja</span>'}</td><td><b>${esc(x.dte||'(sin DTE)')}</b></td><td>${fmtF(x.fecha_desde)}${x.fecha_hasta!==x.fecha_desde?' → '+fmtF(x.fecha_hasta):''}</td><td><b>${x.caravanas}</b></td><td class="cel" title="${esc(x.propietarios||'')}">${esc(x.propietarios||'')}</td><td class="cel">${esc(x.categorias||'')}</td><td class="cel" title="${esc(x.origen_destino||'')}">${esc(x.origen_destino||'')}</td><td class="cel" title="${esc(x.tropas||'')}">${esc(x.tropas||'')}</td><td class="muted cel">${esc(x.fuente||'')}</td><td></td><td></td><td>${fmtTs(x.ultimo_cargado)}</td><td style="white-space:nowrap">${x.tipo==='alta'&&x.dte?`<button class="b s" data-ddjj="${esc(x.dte)}">DDJJ</button> `:''}<button class="b s" data-abrir="${esc(k)}">${ab?'Cerrar':'Ver caravanas'}</button> <button class="b s" data-editar="${esc(k)}">Editar</button></td></tr>`;
     if(ab){ if(!det.length) h+=`<tr><td></td><td colspan="13" class="muted">Sin caravanas</td></tr>`;
       det.forEach(r=>{ h+=`<tr class="g-${r.estado}"><td><input type="checkbox" data-c="${r.numero}" ${st.sel.has(r.numero)?'checked':''}></td><td></td><td class="mono">${r.numero}</td><td>${x.tipo==='alta'?fmtF(r.fecha_alta):fmtF(r.fecha_baja)}</td><td>${tag(r.estado)}</td><td>${esc(r.propietario||'')}</td><td>${esc(r.categoria||'')}</td><td>${esc(x.tipo==='alta'?(r.procedencia_alta||''):(r.destino_baja||''))}</td><td>${esc(r.nro_tropa_alta||'')}</td><td class="muted">${esc(r.origen_alta||'')} · bolsa ${esc(r.bolsa||'—')}</td><td class="${r.fecha_90_dias&&r.fecha_90_dias<=hoy()?'':'muted'}">${fmtF(r.fecha_90_dias)}</td><td class="muted cel" title="${esc(r.observaciones||'')}">${esc(r.observaciones||'')}</td><td>${x.tipo==='alta'&&r.estado==='baja'?'baja '+fmtF(r.fecha_baja)+' '+esc(r.dte_baja||''):x.tipo==='alta'&&r.estado==='salida'?'salida WinCampo '+fmtF(r.fecha_salida):''}</td><td></td></tr>`; }); }
   });
@@ -1028,6 +1028,7 @@ function contarSelAb(){ const st=state.ab; $('abCount').textContent=`${st.sel.si
   $('abDesAlta').disabled=!alta; $('abDesBaja').disabled=!baja; $('abDesAlta').textContent=`Deshacer alta de seleccionadas${alta?' ('+alta+')':''}…`; $('abDesBaja').textContent=`Deshacer baja de seleccionadas${baja?' ('+baja+')':''}…`; }
 $('abTabla').onclick=async e=>{ const st=state.ab;
   const bd=e.target.closest('button[data-ddjj]'); if(bd){ ddjjPorDte(bd.dataset.ddjj); return; }
+  const be=e.target.closest('button[data-editar]'); if(be){ editarDte(be.dataset.editar); return; }
   const b=e.target.closest('button[data-abrir]'); const tr=e.target.closest('tr[data-g]'); const k=b?b.dataset.abrir:(tr&&!e.target.closest('input')?tr.dataset.g:null); if(!k) return;
   if(st.abiertos.has(k)) st.abiertos.delete(k); else { st.abiertos.add(k); try{ await cargarGrupoDte(k); }catch(x){ return toast(x.message); } }
   pintarAltasBajas(); };
@@ -1057,6 +1058,30 @@ function deshacer(tipo){
     }catch(e){ msg('dhMsg','err',e.message); $('dhOk').disabled=false; } };
 }
 $('abDesAlta').onclick=()=>deshacer('alta'); $('abDesBaja').onclick=()=>deshacer('baja');
+async function editarDte(k){
+  try{ exigirTurno(); }catch(e){ return toast(e.message,4000); }
+  const st=state.ab; const [tipo,dte]=k.split('|'); const g=st.grupos.find(x=>x.tipo+'|'+x.dte===k); if(!g) return;
+  let det; try{ det=await cargarGrupoDte(k); }catch(e){ return toast(e.message); }
+  const selDet=det.filter(r=>st.sel.has(r.numero)); const esAlta=tipo==='alta';
+  const lugar0=[...new Set(det.map(r=>esAlta?r.procedencia_alta:r.destino_baja).filter(Boolean))]; const obs0=[...new Set(det.map(r=>r.observaciones).filter(Boolean))];
+  panel(`<h3>Editar ${esAlta?'alta':'baja'} · DTE ${esc(dte||'(sin DTE)')}</h3>
+    <p class="muted">Se cambian solo los campos que completes; los que dejes vacíos quedan como están. Cada cambio queda registrado en Movimientos como "correccion".</p>
+    <label class="f">Aplicar a <select id="edAlc"><option value="todas">todas las caravanas del DTE (${det.length})</option>${selDet.length?`<option value="sel" selected>solo las seleccionadas de este DTE (${selDet.length})</option>`:''}</select></label><br>
+    <label class="f">DTE <input id="edDte" value="${esc(dte)}" placeholder="dejar vacío para no cambiar"></label><br>
+    <label class="f">Fecha de ${esAlta?'alta':'baja'} <input type="date" id="edFecha"></label><br>
+    <label class="f">${esAlta?'Procedencia (titular y establecimiento de origen)':'Destino'} <input id="edLugar" style="width:320px" placeholder="${esc(lugar0.join(' / ')||'dejar vacío para no cambiar')}"></label><br>
+    <label class="f">Observación <input id="edObs" style="width:320px" placeholder="${esc(obs0.slice(0,3).join(' / ')||'dejar vacío para no cambiar')}"></label>
+    <label class="f" style="flex-direction:row;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="edObsBorrar"> Borrar la observación de estas caravanas</label>
+    <div id="edMsg"></div><div class="row" style="margin-top:10px"><button class="b p" id="edOk">Guardar cambios</button> <button class="b" onclick="cerrarPanel()">Cancelar</button></div>`);
+  $('edOk').onclick=async ()=>{
+    const nums=($('edAlc').value==='sel'?selDet:det).map(r=>r.numero);
+    const nd=$('edDte').value.trim(), nf=$('edFecha').value, nl=$('edLugar').value.trim(), no=$('edObsBorrar').checked?'':$('edObs').value.trim();
+    const args={p_tipo:tipo,p_numeros:nums,p_usuario:USER,p_dte:nd&&nd!==dte?nd:null,p_fecha:nf||null,p_lugar:nl||null,p_observaciones:$('edObsBorrar').checked?'':(no||null)};
+    if(args.p_dte===null&&!args.p_fecha&&args.p_lugar===null&&args.p_observaciones===null) return msg('edMsg','err','No cambiaste nada');
+    $('edOk').disabled=true;
+    try{ const r=await rpc('editar_dte',args); toast(`${r.editadas} caravanas editadas${r.omitidas?.length?`, ${r.omitidas.length} sin cambios`:''}`,5000); cerrarPanel(); cargarAltasBajas(); }
+    catch(e){ msg('edMsg','err',e.message); $('edOk').disabled=false; } };
+}
 $('abExcel').onclick=()=>{ const st=state.ab; const det=[...st.abiertos].flatMap(k=>{ const [t,d]=k.split('|'); return (st.det[k]||[]).map(r=>({Tipo:t,DTE:d,Caravana:r.numero,Estado:r.estado,Propietario:r.propietario||'',Categoría:r.categoria||'','Fecha alta':fmtF(r.fecha_alta),'90 días':fmtF(r.fecha_90_dias),'Fecha baja':fmtF(r.fecha_baja),Bolsa:r.bolsa||'',Observación:r.observaciones||''})); });
   const hojas={'Resumen por DTE':st.grupos.map(x=>({Tipo:x.tipo,DTE:x.dte,'Fecha desde':fmtF(x.fecha_desde),'Fecha hasta':fmtF(x.fecha_hasta),Caravanas:x.caravanas,Propietarios:x.propietarios||'',Categorías:x.categorias||'','Procedencia/destino':x.origen_destino||'',Tropas:x.tropas||'',Origen:x.fuente||''}))}; if(det.length) hojas['Caravanas']=det;
   exportXlsx(`altas_bajas_${hoy()}.xlsx`,hojas); };
