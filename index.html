@@ -74,6 +74,7 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
   <button data-t="altam">Alta manual</button>
   <button data-t="bajam">Baja manual</button>
   <button data-t="clasif">Clasificar</button>
+  <button data-t="altasbajas">Altas y bajas</button>
   <button data-t="movs">Movimientos</button>
   <button data-t="config">Configuración</button>
 </nav>
@@ -314,7 +315,31 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
   </div>
 </section>
 
-<!-- MOVIMIENTOS -->
+<!-- ALTAS Y BAJAS (resumen por DTE) -->
+<section id="t-altasbajas" class="tab hidden">
+  <div class="card"><div class="row">
+    <label class="f">Desde <input type="date" id="abDesde"></label>
+    <label class="f">Hasta <input type="date" id="abHasta"></label>
+    <label class="f">Tipo <select id="abTipo"><option value="">Altas y bajas</option><option value="alta">Solo altas</option><option value="baja">Solo bajas</option></select></label>
+    <label class="f">Propietario <select id="abProp"><option value="">Todos</option></select></label>
+    <label class="f">DTE <input id="abDte"></label>
+    <label class="f">Caravana <input id="abCar" class="mono" title="Abre los DTE donde está esa caravana"></label>
+    <button class="b" id="abBuscar">Buscar</button>
+    <button class="b" id="abExcel">Exportar Excel</button>
+    <span class="muted" id="abInfo"></span>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <span class="muted">Hacé clic en un DTE para ver sus caravanas; marcalas para copiar o deshacer.</span>
+    <button class="b s" id="abSelNada">Desmarcar</button>
+    <span class="sp"></span><span id="abCount" class="muted">0 seleccionadas</span>
+    <button class="b" id="abCopiar">Copiar caravanas</button>
+    <button class="b d" id="abDesAlta" disabled title="Vuelven a su situación anterior: a virgen si el alta usó una virgen, o salen del padrón (quedan pendientes de alta)">Deshacer alta de seleccionadas…</button>
+    <button class="b d" id="abDesBaja" disabled title="Vuelven a activas (o a salida pendiente de DTE si WinCampo ya las dio por vendidas)">Deshacer baja de seleccionadas…</button>
+  </div></div>
+  <div class="tw"><table id="abTabla"></table></div>
+</section>
+
+<!-- MOVIMIENTOS (registro de lo que hizo cada operario) -->
 <section id="t-movs" class="tab hidden">
   <div class="card"><div class="row">
     <label class="f">Desde <input type="date" id="mDesde"></label>
@@ -324,18 +349,12 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
     <label class="f">DTE <input id="mDte"></label>
     <label class="f">Caravana <input id="mCar" class="mono"></label>
     <label class="f">Fuente <select id="mFuente"><option value="">Todas</option><option>wincampo</option><option>manual</option><option>padron_inicial</option></select></label>
+    <label class="f">Usuario <input id="mUser" style="width:140px"></label>
     <button class="b" id="mBuscar">Buscar</button>
     <button class="b" id="mExcel">Exportar Excel</button>
+    <button class="b" id="mCopiar" title="Copia las caravanas del listado filtrado (sin repetir)">Copiar caravanas</button>
     <button class="b" id="mDdjj" title="Genera la Declaración Jurada de Ingresos con las altas del DTE filtrado">Generar DDJJ del DTE</button>
     <span class="muted" id="mInfo"></span>
-  </div>
-  <div class="row" style="margin-top:8px">
-    <label class="f">Vista <select id="mVista"><option value="dte">Resumen por DTE</option><option value="det">Detalle de movimientos</option></select></label>
-    <button class="b s" id="mSelNada">Desmarcar</button>
-    <span class="sp"></span><span id="mCount" class="muted">0 seleccionadas</span>
-    <button class="b" id="mCopiar">Copiar caravanas</button>
-    <button class="b d" id="mDesAlta" disabled title="Vuelven a su situación anterior: a virgen si el alta usó una virgen, o salen del padrón (quedan pendientes de alta)">Deshacer alta de seleccionadas…</button>
-    <button class="b d" id="mDesBaja" disabled title="Vuelven a activas (o a salida pendiente de DTE si WinCampo ya las dio por vendidas)">Deshacer baja de seleccionadas…</button>
   </div></div>
   <div class="tw"><table id="mTabla"></table></div>
 </section>
@@ -452,9 +471,9 @@ async function iniciar(){
   fechasDDMM(document);
   $('login').classList.add('hidden'); $('pUser').textContent = USER;
   const {data} = await sb.from('propietarios').select('*').order('orden'); PROPS = data||[];
-  ['eProp','cProp','mProp','sProp'].forEach(s=>llenarProps(s,true)); ['aProp'].forEach(s=>llenarProps(s,false));
+  ['eProp','cProp','mProp','sProp','abProp'].forEach(s=>llenarProps(s,true)); ['aProp'].forEach(s=>llenarProps(s,false));
   ['aFecha','bFecha','kFecha'].forEach(i=>$(i).value=hoy());
-  $('iDesde').value=diasAtras(60); $('iHasta').value=hoy(); $('eDesde').value=diasAtras(120); $('eHasta').value=hoy(); $('mDesde').value=diasAtras(180); $('mHasta').value=hoy();
+  $('iDesde').value=diasAtras(60); $('iHasta').value=hoy(); $('eDesde').value=diasAtras(120); $('eHasta').value=hoy(); $('mDesde').value=diasAtras(30); $('mHasta').value=hoy(); $('abDesde').value=diasAtras(180); $('abHasta').value=hoy();
   await Promise.all([refrescarTurno(), refrescarSync(), contarPendientes()]);
   mostrarTab('inicio');
   setInterval(()=>{ refrescarSync(); if(TURNO?.usuario===USER && Date.now()-ULTIMA_ACTIVIDAD < 3*60000) tomarTurno(); else refrescarTurno(); }, 60000);
@@ -512,7 +531,7 @@ function mostrarTab(t){
   document.querySelectorAll('.tab').forEach(s=>s.classList.toggle('hidden', s.id!=='t-'+t));
   $('side').classList.remove('on');
   if(TABS_CARGA.has(t) && turnoLibre()) tomarTurno();
-  ({inicio:cargarInicio, ingresos:cargarIngresos, egresos:cargarEgresos, stock:cargarStock, consulta:cargarConsulta, movs:cargarMovs, config:cargarConfig, altam:cargarCompras, clasif:cargarClasif})[t]?.();
+  ({inicio:cargarInicio, ingresos:cargarIngresos, egresos:cargarEgresos, stock:cargarStock, consulta:cargarConsulta, movs:cargarMovs, altasbajas:cargarAltasBajas, config:cargarConfig, altam:cargarCompras, clasif:cargarClasif})[t]?.();
 }
 $('nav').onclick = e=>{ const b=e.target.closest('button'); if(b) mostrarTab(b.dataset.t); };
 
@@ -969,33 +988,31 @@ $('kfConf').onclick = async ()=>{
   }catch(e){ msg('kfPrevBox','err',e.message); $('kfConf').disabled=false; }
 };
 
-// ---------- MOVIMIENTOS ----------
-state.mov={grupos:[],det:{},abiertos:new Set(),sel:new Set()};
-async function cargarMovs(){
-  state.mov.sel.clear();
-  if($('mVista').value==='det') return cargarMovsDetalle();
+// ---------- ALTAS Y BAJAS (resumen por DTE) ----------
+state.ab={grupos:[],det:{},abiertos:new Set(),sel:new Set()};
+async function cargarAltasBajas(){
+  const st=state.ab; st.sel.clear();
   try{
     let g=await all(sb.from('v_movimientos_dte').select('*').order('fecha_hasta',{ascending:false}));
-    const tipo=$('mTipo').value, dte=$('mDte').value.trim().toUpperCase(), prop=$('mProp').value?propNombre(+$('mProp').value):'', d1=$('mDesde').value, d2=$('mHasta').value, fuente=$('mFuente').value;
-    g=g.filter(x=>(!tipo||x.tipo===tipo)&&(!dte||x.dte.toUpperCase().includes(dte))&&(!prop||(x.propietarios||'').includes(prop))&&(!fuente||x.tipo!=='alta'||(x.fuente||'').includes(fuente))&&(!d1||x.fecha_hasta>=d1)&&(!d2||x.fecha_desde<=d2));
-    if(tipo&&!['alta','baja',''].includes(tipo)) toast('El resumen por DTE solo muestra altas y bajas; para ver '+tipo+' usá la vista Detalle',4000);
-    state.mov.grupos=g; state.mov.det={}; state.mov.abiertos.clear();
-    if($('mCar').value.trim()){ // si buscan una caravana, abrir sus DTE
-      const n=$('mCar').value.trim().toUpperCase(); const {data}=await sb.from('caravanas').select('dte_alta,dte_baja,estado').ilike('numero',`%${n}%`);
-      (data||[]).forEach(c=>{ state.mov.abiertos.add('alta|'+(c.dte_alta||'')); if(c.estado==='baja') state.mov.abiertos.add('baja|'+(c.dte_baja||'')); });
-      for(const k of state.mov.abiertos) await cargarGrupoDte(k);
-    }
+    const tipo=$('abTipo').value, dte=$('abDte').value.trim().toUpperCase(), prop=$('abProp').value?propNombre(+$('abProp').value):'', d1=$('abDesde').value, d2=$('abHasta').value;
+    g=g.filter(x=>(!tipo||x.tipo===tipo)&&(!dte||x.dte.toUpperCase().includes(dte))&&(!prop||(x.propietarios||'').includes(prop))&&(!d1||x.fecha_hasta>=d1)&&(!d2||x.fecha_desde<=d2));
+    st.grupos=g; st.det={}; st.abiertos.clear();
+    const n=$('abCar').value.trim().toUpperCase();
+    if(n){ const {data}=await sb.from('caravanas').select('dte_alta,dte_baja,estado').ilike('numero',`%${n}%`);
+      (data||[]).forEach(c=>{ st.abiertos.add('alta|'+(c.dte_alta||'')); if(c.estado==='baja') st.abiertos.add('baja|'+(c.dte_baja||'')); });
+      st.grupos=g.filter(x=>st.abiertos.has(x.tipo+'|'+x.dte));
+      for(const k of st.abiertos) await cargarGrupoDte(k); }
   }catch(e){ return toast(e.message); }
-  pintarMovsDte();
+  pintarAltasBajas();
 }
 async function cargarGrupoDte(k){
-  if(state.mov.det[k]) return state.mov.det[k]; const [tipo,dte]=k.split('|');
+  const st=state.ab; if(st.det[k]) return st.det[k]; const [tipo,dte]=k.split('|');
   let q=sb.from('v_caravanas').select('*').order('numero');
   q = tipo==='alta' ? (dte?q.eq('dte_alta',dte):q.is('dte_alta',null)).in('estado',['activa','salida','baja']) : (dte?q.eq('dte_baja',dte):q.is('dte_baja',null)).eq('estado','baja');
-  state.mov.det[k]=await all(q); return state.mov.det[k];
+  st.det[k]=await all(q); return st.det[k];
 }
-function pintarMovsDte(){
-  const st=state.mov; const g=st.grupos;
+function pintarAltasBajas(){
+  const st=state.ab, g=st.grupos;
   let h=`<tr><th></th><th>Tipo</th><th>DTE</th><th>Fecha</th><th>Caravanas</th><th>Propietario</th><th>Categorías</th><th>Procedencia / destino</th><th>Tropa</th><th>Origen</th><th>Último cargado</th><th></th></tr>`;
   g.forEach(x=>{ const k=x.tipo+'|'+x.dte; const ab=st.abiertos.has(k); const det=st.det[k]||[]; const selG=det.length&&det.every(r=>st.sel.has(r.numero));
     h+=`<tr class="tropa-h" data-g="${esc(k)}" style="cursor:pointer"><td>${ab?`<input type="checkbox" data-gsel="${esc(k)}" ${selG?'checked':''} title="Marcar todas las del DTE">`:''}</td><td>${x.tipo==='alta'?'<span class="tag activa">Alta</span>':'<span class="tag baja">Baja</span>'}</td><td><b>${esc(x.dte||'(sin DTE)')}</b></td><td>${fmtF(x.fecha_desde)}${x.fecha_hasta!==x.fecha_desde?' → '+fmtF(x.fecha_hasta):''}</td><td><b>${x.caravanas}</b></td><td>${esc(x.propietarios||'')}</td><td>${esc(x.categorias||'')}</td><td>${esc(x.origen_destino||'')}</td><td>${esc(x.tropas||'')}</td><td class="muted">${esc(x.fuente||'')}</td><td>${fmtTs(x.ultimo_cargado)}</td><td>${x.tipo==='alta'&&x.dte?`<button class="b s" data-ddjj="${esc(x.dte)}">DDJJ</button> `:''}<button class="b s" data-abrir="${esc(k)}">${ab?'Cerrar':'Ver caravanas'}</button></td></tr>`;
@@ -1003,50 +1020,45 @@ function pintarMovsDte(){
       det.forEach(r=>{ h+=`<tr class="g-${r.estado}"><td><input type="checkbox" data-c="${r.numero}" ${st.sel.has(r.numero)?'checked':''}></td><td></td><td class="mono">${r.numero}</td><td>${x.tipo==='alta'?fmtF(r.fecha_alta):fmtF(r.fecha_baja)}</td><td>${tag(r.estado)}</td><td>${esc(r.propietario||'')}</td><td>${esc(r.categoria||'')}</td><td>${esc(x.tipo==='alta'?(r.procedencia_alta||''):(r.destino_baja||''))}</td><td>${esc(r.nro_tropa_alta||'')}</td><td class="muted">${esc(r.origen_alta||'')} · bolsa ${esc(r.bolsa||'—')}</td><td>${x.tipo==='alta'&&r.estado==='baja'?'baja '+fmtF(r.fecha_baja)+' '+esc(r.dte_baja||''):x.tipo==='alta'&&r.estado==='salida'?'salida WinCampo '+fmtF(r.fecha_salida):''}</td><td></td></tr>`; }); }
   });
   if(!g.length) h+='<tr><td colspan="12" class="muted">Sin altas ni bajas para ese filtro</td></tr>';
-  $('mTabla').innerHTML=h; $('mInfo').textContent=`${g.length} DTE · ${g.reduce((a,x)=>a+x.caravanas,0)} caravanas`; contarSelMov();
+  $('abTabla').innerHTML=h; $('abInfo').textContent=`${g.length} DTE · ${g.reduce((a,x)=>a+x.caravanas,0)} caravanas`; contarSelAb();
 }
-function contarSelMov(){ const st=state.mov, n=st.sel.size; $('mCount').textContent=`${n} seleccionadas`; let alta=0, baja=0;
-  if($('mVista').value==='dte'){ for(const [k,det] of Object.entries(st.det)){ const [t]=k.split('|'); det.forEach(r=>{ if(st.sel.has(r.numero)){ if(t==='alta'&&['activa','salida'].includes(r.estado)) alta++; if(t==='baja'&&r.estado==='baja') baja++; } }); } }
-  $('mDesAlta').disabled=!alta; $('mDesBaja').disabled=!baja; $('mDesAlta').textContent=`Deshacer alta de seleccionadas${alta?' ('+alta+')':''}…`; $('mDesBaja').textContent=`Deshacer baja de seleccionadas${baja?' ('+baja+')':''}…`; }
-$('mTabla').onclick=async e=>{ if($('mVista').value!=='dte') return; const st=state.mov;
+function contarSelAb(){ const st=state.ab; $('abCount').textContent=`${st.sel.size} seleccionadas`; let alta=0, baja=0;
+  for(const [k,det] of Object.entries(st.det)){ const [t]=k.split('|'); det.forEach(r=>{ if(st.sel.has(r.numero)){ if(t==='alta'&&['activa','salida'].includes(r.estado)) alta++; if(t==='baja'&&r.estado==='baja') baja++; } }); }
+  $('abDesAlta').disabled=!alta; $('abDesBaja').disabled=!baja; $('abDesAlta').textContent=`Deshacer alta de seleccionadas${alta?' ('+alta+')':''}…`; $('abDesBaja').textContent=`Deshacer baja de seleccionadas${baja?' ('+baja+')':''}…`; }
+$('abTabla').onclick=async e=>{ const st=state.ab;
   const bd=e.target.closest('button[data-ddjj]'); if(bd){ ddjjPorDte(bd.dataset.ddjj); return; }
   const b=e.target.closest('button[data-abrir]'); const tr=e.target.closest('tr[data-g]'); const k=b?b.dataset.abrir:(tr&&!e.target.closest('input')?tr.dataset.g:null); if(!k) return;
   if(st.abiertos.has(k)) st.abiertos.delete(k); else { st.abiertos.add(k); try{ await cargarGrupoDte(k); }catch(x){ return toast(x.message); } }
-  pintarMovsDte(); };
-$('mTabla').onchange=e=>{ if($('mVista').value!=='dte') return; const c=e.target, st=state.mov;
-  if(c.dataset.gsel){ (st.det[c.dataset.gsel]||[]).forEach(r=>c.checked?st.sel.add(r.numero):st.sel.delete(r.numero)); pintarMovsDte(); return; }
-  if(c.dataset.c){ c.checked?st.sel.add(c.dataset.c):st.sel.delete(c.dataset.c); contarSelMov(); } };
-$('mSelNada').onclick=()=>{ state.mov.sel.clear(); $('mVista').value==='dte'?pintarMovsDte():contarSelMov(); };
-$('mVista').onchange=cargarMovs;
-$('mCopiar').onclick=async ()=>{ const st=state.mov; let nums=[...st.sel];
-  if(!nums.length){ nums = $('mVista').value==='det' ? [...new Set(state.movs.map(x=>x.caravana))] : [...new Set([...st.abiertos].flatMap(k=>(st.det[k]||[]).map(r=>r.numero)))]; }
-  if(!nums.length) return toast($('mVista').value==='det'?'No hay movimientos en el listado':'Abrí un DTE (Ver caravanas) o marcá caravanas para copiar');
+  pintarAltasBajas(); };
+$('abTabla').onchange=e=>{ const c=e.target, st=state.ab;
+  if(c.dataset.gsel){ (st.det[c.dataset.gsel]||[]).forEach(r=>c.checked?st.sel.add(r.numero):st.sel.delete(r.numero)); pintarAltasBajas(); return; }
+  if(c.dataset.c){ c.checked?st.sel.add(c.dataset.c):st.sel.delete(c.dataset.c); contarSelAb(); } };
+$('abBuscar').onclick=cargarAltasBajas; $('abSelNada').onclick=()=>{ state.ab.sel.clear(); pintarAltasBajas(); };
+['abDte','abCar'].forEach(i=>$(i).addEventListener('keydown',e=>{ if(e.key==='Enter') cargarAltasBajas(); }));
+$('abCopiar').onclick=async ()=>{ const st=state.ab; let nums=[...st.sel];
+  if(!nums.length) nums=[...new Set([...st.abiertos].flatMap(k=>(st.det[k]||[]).map(r=>r.numero)))];
+  if(!nums.length) return toast('Abrí un DTE (Ver caravanas) o marcá caravanas para copiar');
   const txt=nums.join('\n'); try{ await navigator.clipboard.writeText(txt); toast(`${nums.length} caravanas copiadas al portapapeles`); }catch(e){ prompt('Copiá las caravanas:', txt.replace(/\n/g,' ')); } };
 function deshacer(tipo){
   try{ exigirTurno(); }catch(e){ return toast(e.message,4000); }
-  const st=state.mov; const nums=[]; for(const [k,det] of Object.entries(st.det)){ const [t]=k.split('|'); if(t!==tipo) continue; det.forEach(r=>{ if(st.sel.has(r.numero)&&(tipo==='alta'?['activa','salida'].includes(r.estado):r.estado==='baja')) nums.push(r.numero); }); }
+  const st=state.ab; const nums=[]; for(const [k,det] of Object.entries(st.det)){ const [t]=k.split('|'); if(t!==tipo) continue; det.forEach(r=>{ if(st.sel.has(r.numero)&&(tipo==='alta'?['activa','salida'].includes(r.estado):r.estado==='baja')) nums.push(r.numero); }); }
   if(!nums.length) return toast('No hay caravanas seleccionadas para deshacer');
   const esAlta=tipo==='alta';
   panel(`<h3>Deshacer ${esAlta?'alta':'baja'} · ${nums.length} caravanas</h3>
-    <p class="muted">${esAlta?'Cada caravana vuelve a su situación anterior al alta: si el alta usó una virgen, vuelve a virgen (disponible en la compra); si vino de WinCampo o de una carga manual, sale del padrón y vuelve a aparecer como pendiente de alta en Ingresos. Se borra su alta (y la salida de WinCampo si la tenía).':'Cada caravana vuelve a estar activa en el padrón. Si WinCampo ya la dio por vendida o muerta, queda otra vez como salida pendiente de DTE en Egresos.'} Todo queda registrado en Reversiones.</p>
+    <p class="muted">${esAlta?'Cada caravana vuelve a su situación anterior al alta: si el alta usó una virgen, vuelve a virgen (disponible en la compra); si vino de WinCampo o de una carga manual, sale del padrón y vuelve a aparecer como pendiente de alta en Ingresos. Se borra su alta (y la salida de WinCampo si la tenía).':'Cada caravana vuelve a estar activa en el padrón. Si WinCampo ya la dio por vendida o muerta, queda otra vez como salida pendiente de DTE en Egresos.'} Queda registrado en Movimientos (tipo reversion) y en Reversiones.</p>
     <div class="mono" style="max-height:160px;overflow:auto;font-size:12px;border:1px solid var(--line);padding:6px;border-radius:6px">${nums.join('<br>')}</div>
     <label class="f" style="margin-top:8px">Observación (opcional) <input id="dhObs"></label>
     <div id="dhMsg"></div><div class="row" style="margin-top:8px"><button class="b d" id="dhOk">Confirmar: deshacer ${esAlta?'alta':'baja'}</button> <button class="b" onclick="cerrarPanel()">Cancelar</button></div>`);
   $('dhOk').onclick=async ()=>{ $('dhOk').disabled=true;
     try{ const r=await rpc(esAlta?'deshacer_alta':'deshacer_baja',{p_numeros:nums,p_usuario:USER,p_observaciones:$('dhObs').value.trim()||null});
       toast(esAlta?`${r.total} altas deshechas (${r.virgenes} volvieron a virgen, ${r.borradas} salieron del padrón)${r.omitidas?.length?`, ${r.omitidas.length} omitidas`:''}`:`${r.total} bajas deshechas${r.salidas?`, ${r.salidas} quedaron como salida pendiente de DTE`:''}${r.omitidas?.length?`, ${r.omitidas.length} omitidas`:''}`,6000);
-      cerrarPanel(); cargarMovs(); contarPendientes();
+      cerrarPanel(); cargarAltasBajas(); contarPendientes();
     }catch(e){ msg('dhMsg','err',e.message); $('dhOk').disabled=false; } };
 }
-$('mDesAlta').onclick=()=>deshacer('alta'); $('mDesBaja').onclick=()=>deshacer('baja');
-async function cargarMovsDetalle(){
-  let q=sb.from('movimientos').select('*, propietarios(nombre)').gte('fecha',$('mDesde').value).lte('fecha',$('mHasta').value).order('id',{ascending:false});
-  if($('mTipo').value) q=q.eq('tipo',$('mTipo').value); if($('mProp').value) q=q.eq('propietario_id',+$('mProp').value); if($('mDte').value) q=q.ilike('dte',`%${$('mDte').value}%`); if($('mCar').value) q=q.ilike('caravana',`%${$('mCar').value}%`); if($('mFuente').value) q=q.eq('fuente',$('mFuente').value);
-  try{ state.movs=(await all(q)).map(r=>({...r,propietario:r.propietarios?.nombre||''})); }catch(e){ return toast(e.message); }
-  $('mTabla').innerHTML=`<tr><th>Fecha</th><th>Caravana</th><th>Tipo</th><th>DTE</th><th>Propietario</th><th>Cat.</th><th>Origen/Destino</th><th>Tropa</th><th>Fuente</th><th>Usuario</th><th>Cargado</th><th>Obs.</th></tr>`+state.movs.map(x=>`<tr><td>${fmtF(x.fecha)}</td><td class="mono">${x.caravana}</td><td>${esc(x.tipo)}</td><td>${esc(x.dte||'')}</td><td>${esc(x.propietario)}</td><td>${esc(x.categoria||'')}</td><td>${esc(x.origen_destino||'')}</td><td>${esc(x.nro_tropa||'')}</td><td>${esc(x.fuente)}</td><td>${esc(x.usuario||'')}</td><td>${fmtTs(x.creado_en)}</td><td class="muted">${esc(x.observaciones||'')}</td></tr>`).join('');
-  $('mInfo').textContent=`${state.movs.length} movimientos · ${new Set(state.movs.map(x=>x.caravana)).size} caravanas`; contarSelMov();
-}
-$('mBuscar').onclick=cargarMovs;
+$('abDesAlta').onclick=()=>deshacer('alta'); $('abDesBaja').onclick=()=>deshacer('baja');
+$('abExcel').onclick=()=>{ const st=state.ab; const det=[...st.abiertos].flatMap(k=>{ const [t,d]=k.split('|'); return (st.det[k]||[]).map(r=>({Tipo:t,DTE:d,Caravana:r.numero,Estado:r.estado,Propietario:r.propietario||'',Categoría:r.categoria||'','Fecha alta':fmtF(r.fecha_alta),'Fecha baja':fmtF(r.fecha_baja),Bolsa:r.bolsa||''})); });
+  const hojas={'Resumen por DTE':st.grupos.map(x=>({Tipo:x.tipo,DTE:x.dte,'Fecha desde':fmtF(x.fecha_desde),'Fecha hasta':fmtF(x.fecha_hasta),Caravanas:x.caravanas,Propietarios:x.propietarios||'',Categorías:x.categorias||'','Procedencia/destino':x.origen_destino||'',Tropas:x.tropas||'',Origen:x.fuente||''}))}; if(det.length) hojas['Caravanas']=det;
+  exportXlsx(`altas_bajas_${hoy()}.xlsx`,hojas); };
 async function ddjjPorDte(dte){
   let altas; try{ altas=await all(sb.from('movimientos').select('*').eq('tipo','alta').ilike('dte',dte).order('id')); }catch(e){ return toast(e.message); }
   if(!altas.length) return toast('No hay altas con ese DTE');
@@ -1059,11 +1071,20 @@ async function ddjjPorDte(dte){
     <button class="b p" id="dOk">Generar PDF</button> <button class="b" onclick="cerrarPanel()">Cancelar</button>`);
   $('dOk').onclick=()=>{ generarDDJJ({dte, titular:$('dTit').value.trim(), establecimiento:$('dTit').value.trim(), renspa:$('dRenspa').value.trim(), cuig:$('dCuig').value.trim().toUpperCase(), fecha:$('dFecha').value, numeros:[...new Set(altas.map(x=>x.caravana))]}); cerrarPanel(); };
 }
-$('mDdjj').onclick=()=>{ const dte=$('mDte').value.trim(); if(!dte) return toast('Filtrá primero por un DTE (o usá el botón DDJJ de la fila del DTE)'); ddjjPorDte(dte); };
-$('mExcel').onclick=()=>{ if($('mVista').value==='det') return exportXlsx(`movimientos_${hoy()}.xlsx`,{Movimientos:state.movs.map(({propietarios,...r})=>r)});
-  const st=state.mov; const det=[...st.abiertos].flatMap(k=>{ const [t,d]=k.split('|'); return (st.det[k]||[]).map(r=>({Tipo:t,DTE:d,Caravana:r.numero,Estado:r.estado,Propietario:r.propietario||'',Categoría:r.categoria||'','Fecha alta':fmtF(r.fecha_alta),'Fecha baja':fmtF(r.fecha_baja),Bolsa:r.bolsa||''})); });
-  const hojas={'Resumen por DTE':st.grupos.map(x=>({Tipo:x.tipo,DTE:x.dte,'Fecha desde':fmtF(x.fecha_desde),'Fecha hasta':fmtF(x.fecha_hasta),Caravanas:x.caravanas,Propietarios:x.propietarios||'',Categorías:x.categorias||'','Procedencia/destino':x.origen_destino||'',Tropas:x.tropas||'',Origen:x.fuente||''}))}; if(det.length) hojas['Caravanas']=det;
-  exportXlsx(`movimientos_dte_${hoy()}.xlsx`,hojas); };
+
+// ---------- MOVIMIENTOS (registro de operaciones) ----------
+async function cargarMovs(){
+  let q=sb.from('movimientos').select('*, propietarios(nombre)').gte('fecha',$('mDesde').value).lte('fecha',$('mHasta').value).order('id',{ascending:false});
+  if($('mTipo').value) q=q.eq('tipo',$('mTipo').value); if($('mProp').value) q=q.eq('propietario_id',+$('mProp').value); if($('mDte').value) q=q.ilike('dte',`%${$('mDte').value}%`); if($('mCar').value) q=q.ilike('caravana',`%${$('mCar').value}%`); if($('mFuente').value) q=q.eq('fuente',$('mFuente').value); if($('mUser').value.trim()) q=q.ilike('usuario',`%${$('mUser').value.trim()}%`);
+  try{ state.movs=(await all(q)).map(r=>({...r,propietario:r.propietarios?.nombre||''})); }catch(e){ return toast(e.message); }
+  $('mTabla').innerHTML=`<tr><th>Fecha</th><th>Caravana</th><th>Tipo</th><th>DTE</th><th>Propietario</th><th>Cat.</th><th>Origen/Destino</th><th>Tropa</th><th>Fuente</th><th>Usuario</th><th>Cargado</th><th>Obs.</th></tr>`+state.movs.map(x=>`<tr><td>${fmtF(x.fecha)}</td><td class="mono">${x.caravana}</td><td>${esc(x.tipo)}</td><td>${esc(x.dte||'')}</td><td>${esc(x.propietario)}</td><td>${esc(x.categoria||'')}</td><td>${esc(x.origen_destino||'')}</td><td>${esc(x.nro_tropa||'')}</td><td>${esc(x.fuente)}</td><td>${esc(x.usuario||'')}</td><td>${fmtTs(x.creado_en)}</td><td class="muted">${esc(x.observaciones||'')}</td></tr>`).join('');
+  $('mInfo').textContent=`${state.movs.length} movimientos · ${new Set(state.movs.map(x=>x.caravana)).size} caravanas`;
+}
+$('mBuscar').onclick=cargarMovs;
+$('mCopiar').onclick=async ()=>{ const nums=[...new Set(state.movs.map(x=>x.caravana))]; if(!nums.length) return toast('No hay movimientos en el listado (buscá primero)');
+  const txt=nums.join('\n'); try{ await navigator.clipboard.writeText(txt); toast(`${nums.length} caravanas copiadas al portapapeles`); }catch(e){ prompt('Copiá las caravanas:', txt.replace(/\n/g,' ')); } };
+$('mDdjj').onclick=()=>{ const dte=$('mDte').value.trim(); if(!dte) return toast('Filtrá primero por un DTE'); ddjjPorDte(dte); };
+$('mExcel').onclick=()=>exportXlsx(`movimientos_${hoy()}.xlsx`,{Movimientos:state.movs.map(({propietarios,...r})=>r)});
 
 // ---------- CONFIG ----------
 async function cargarConfig(){
