@@ -1,0 +1,7 @@
+build/
+.gradle/
+keystore/
+local.properties
+*.iml
+.idea/
+tools/*.png

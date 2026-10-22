@@ -1,0 +1,73 @@
+# Compila la app Android "Lector de Manga" (carpeta manga-app) y publica el APK como Release de GitHub.
+# Se dispara con cada cambio dentro de manga-app/ o a mano desde la pestaña Actions ("Run workflow").
+# El APK queda en: https://github.com/pecuariabulltrade/caravanas-pecuaria/releases/latest
+name: Lector de Manga (APK)
+
+on:
+  push:
+    branches: [main]
+    paths: ['manga-app/**', '.github/workflows/manga-app.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: manga-app
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      # Firma estable (opcional): secret MANGA_KEYSTORE_B64 (keystore en base64) + MANGA_KEYSTORE_PASS.
+      # Si no existen, el APK sale firmado con la clave debug: para actualizar hay que desinstalar la versión anterior.
+      - name: Preparar keystore
+        if: ${{ secrets.MANGA_KEYSTORE_B64 != '' }}
+        env:
+          KS: ${{ secrets.MANGA_KEYSTORE_B64 }}
+          PASS: ${{ secrets.MANGA_KEYSTORE_PASS }}
+        run: |
+          mkdir -p manga-app/keystore
+          echo "$KS" | base64 -d > manga-app/keystore/manga.jks
+          printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=manga\n' "$PASS" "$PASS" > manga-app/keystore/manga.properties
+
+      - name: Compilar APK
+        env:
+          APP_VERSION_CODE: ${{ github.run_number }}
+          APP_VERSION_NAME: 1.0.${{ github.run_number }}
+        run: gradle -p manga-app assembleRelease --no-daemon
+
+      - name: Renombrar APK
+        run: cp manga-app/app/build/outputs/apk/release/app-release.apk LectorManga-1.0.${{ github.run_number }}.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LectorManga-apk
+          path: LectorManga-*.apk
+
+      - name: Publicar Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: manga-app-v1.0.${{ github.run_number }}
+          name: Lector de Manga 1.0.${{ github.run_number }}
+          body: |
+            APK de la app Lector de Manga (tablet Android + balanza XR5000).
+            Instalación: abrir este enlace desde la tablet, descargar el .apk y tocarlo para instalar
+            (permitir "instalar apps de origen desconocido" si lo pide).
+          files: LectorManga-*.apk

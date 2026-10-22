@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- caravana (etiqueta) -->
+    <path android:fillColor="#fff3dc"
+        android:pathData="M54,26 C44,26 36,34 36,44 C36,52 40,57 44,61 L44,80 C44,84 48,86 54,86 C60,86 64,84 64,80 L64,61 C68,57 72,52 72,44 C72,34 64,26 54,26 Z" />
+    <path android:fillColor="#2e7d32" android:pathData="M54,38 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
+    <path android:fillColor="#2e7d32" android:pathData="M47,66h14v4h-14z M47,73h14v4h-14z" />
+</vector>
