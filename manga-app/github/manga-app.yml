@@ -19,6 +19,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      HAS_KEYSTORE: ${{ secrets.MANGA_KEYSTORE_B64 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -38,7 +40,7 @@ jobs:
       # Firma estable (opcional): secret MANGA_KEYSTORE_B64 (keystore en base64) + MANGA_KEYSTORE_PASS.
       # Si no existen, el APK sale firmado con la clave debug: para actualizar hay que desinstalar la versión anterior.
       - name: Preparar keystore
-        if: ${{ secrets.MANGA_KEYSTORE_B64 != '' }}
+        if: ${{ env.HAS_KEYSTORE != '' }}
         env:
           KS: ${{ secrets.MANGA_KEYSTORE_B64 }}
           PASS: ${{ secrets.MANGA_KEYSTORE_PASS }}

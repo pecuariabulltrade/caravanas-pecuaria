@@ -14,8 +14,8 @@ https://github.com/pecuariabulltrade/caravanas-pecuaria/releases/latest
 
 ## 2. Publicar el portal y compilar el APK
 
-1. Copiar esta carpeta (`manga-app/`), `.github/workflows/manga-app.yml`, `index.html` y `supabase/patch_2026-10-22_sesiones_manga.sql` a `Documents\GitHub\caravanas-pecuaria` de la PC de la oficina.
-2. Ejecutar `PUBLICAR_GITHUB.bat`. Al subir:
+1. Los archivos ya están en `Documents\GitHub\caravanas-pecuaria` de la PC de la oficina (carpeta `manga-app/`, `index.html` con la pestaña Sesiones y `supabase/patch_2026-10-22_sesiones_manga.sql`).
+2. Ejecutar `PUBLICAR_MANGA.bat` (copia el workflow `manga-app/github/manga-app.yml` a `.github/workflows/` y sube todo). Al subir:
    - GitHub Pages actualiza el portal con la pestaña Sesiones (1–2 min).
    - GitHub Actions compila el APK (5–8 min) y lo publica en *Releases*. Se puede seguir en la pestaña **Actions** del repo.
 3. Si la compilación falla, en Actions se ve el error; pasarlo a Claude para corregirlo.
