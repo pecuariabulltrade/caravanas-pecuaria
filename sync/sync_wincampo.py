@@ -232,7 +232,7 @@ def armar_ingresos(stock, egresos, tropas, trazabilidad=()):
 
 
 def armar_stock(stock):
-    """Foto del stock actual: una fila por RFID 032 con categoría, propietario WinCampo y tropa.
+    """Foto del stock actual: una fila por RFID 032 con categoría, propietario WinCampo, tropa y corral.
     Reemplaza wc_stock entera en cada corrida."""
     filas = {}
     for x in stock:
@@ -242,6 +242,7 @@ def armar_stock(stock):
         filas[rfid] = {
             "caravana": rfid, "nro_tropa": limpiar(x.get("NRO_TROPA")), "hotelero": limpiar(x.get("HOTELERO")),
             "categoria_wc": limpiar(x.get("CATEGORIA_ACTUAL") or x.get("CATEGORIA") or x.get("CATEGORIA_INGRESO")),
+            "nro_corral": limpiar(x.get("NRO_CORRAL") or x.get("CORRAL")),
         }
     return list(filas.values())
 
