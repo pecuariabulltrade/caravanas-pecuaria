@@ -453,7 +453,7 @@ async function rpc(fn, args){ const {data,error} = await sb.rpc(fn,args); if(err
 async function all(q){ // pagina de a 1000
   let from=0, out=[]; for(;;){ const {data,error}=await q.range(from,from+999); if(error) throw new Error(error.message); out=out.concat(data||[]); if(!data||data.length<1000) break; from+=1000; } return out;
 }
-const HOTELERO_PROP={'PEGSA':'PEGSA','BULLTRADE SRL':'BULLTRADE','BULLTRADE':'BULLTRADE','DARWASH SA':'DARWASH','DARWASH':'DARWASH','LAS TAPERAS':'LAS TAPERAS','EL SAGUAIPE SAS':'EL SAGUIPE','EL SAGUIPE':'EL SAGUIPE'};
+const HOTELERO_PROP={'PEGSA':'PEGSA','BULLTRADE SRL':'BULLTRADE','BULLTRADE':'BULLTRADE','DARWASH SA':'DARWASH','DARWASH':'DARWASH','LAS TAPERAS':'LAS TAPERAS','EL SAGUAIPE SAS':'EL SAGUIPE','EL SAGUIPE':'EL SAGUIPE','UGMA':'UGMA'};
 function propDesdeHotelero(h){ const n=HOTELERO_PROP[(h||'').trim().toUpperCase()]; const p=n&&PROPS.find(x=>x.nombre.toUpperCase()===n); return p?p.id:null; }
 function propNombre(id){ return (PROPS.find(p=>p.id===id)||{}).nombre||''; }
 function llenarProps(sel, conTodos){ const el=$(sel); el.innerHTML = (conTodos?'<option value="">Todos</option>':'') + PROPS.filter(p=>p.activo).map(p=>`<option value="${p.id}">${esc(p.nombre)}</option>`).join(''); }
