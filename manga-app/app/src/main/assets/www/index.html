@@ -90,21 +90,21 @@ h2{font-size:22px;margin:0 0 12px}h3{font-size:18px;margin:14px 0 8px}
       </div>
     </div>
     <div class="card">
-      <h2>Balanza XR5000</h2>
+      <h2>Lector de caravanas</h2>
       <div class="grid" style="max-width:520px">
         <label class="f">Conexión
-          <select id="cfgModo"><option value="bluetooth">Bluetooth</option><option value="usb">Cable USB-C</option></select>
+          <select id="cfgModo"><option value="bluetooth">Balanza XR5000 por Bluetooth</option><option value="baston">Bastón XRS2i directo por Bluetooth</option><option value="usb">Balanza XR5000 por cable USB-C</option></select>
         </label>
         <div id="cfgBtBox">
-          <label class="f">Equipo Bluetooth emparejado <select id="cfgBt"></select></label>
+          <label class="f" id="cfgBtLabel">Equipo Bluetooth emparejado <select id="cfgBt"></select></label>
           <div class="row" style="margin-top:8px"><button class="b" id="cfgBtRefrescar">Actualizar lista</button><button class="b" id="cfgBtAjustes">Abrir ajustes Bluetooth</button></div>
-          <p class="muted">Primero emparejá la balanza desde los ajustes Bluetooth de la tablet (en el XR5000: Bluetooth encendido y visible).</p>
+          <p class="muted" id="cfgBtAyuda"></p>
         </div>
         <div id="cfgUsbBox" class="hidden">
           <label class="f">Velocidad (baud) <select id="cfgBaud"><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option>115200</option></select></label>
           <div class="muted" id="cfgUsbInfo" style="margin-top:8px"></div>
         </div>
-        <button class="b" id="cfgProbarBalanza">Probar conexión con la balanza</button>
+        <button class="b" id="cfgProbarBalanza">Probar conexión</button>
         <div id="cfgBalMsg"></div>
       </div>
     </div>
@@ -117,7 +117,7 @@ h2{font-size:22px;margin:0 0 12px}h3{font-size:18px;margin:14px 0 8px}
 
 <!-- INICIO -->
 <section id="s-home" class="screen">
-  <div class="top"><h1>Lector de Manga</h1><span class="sp"></span><span class="pill" id="homeConn">Balanza: —</span><button class="b" id="homeCfg" title="Configuración">⚙</button></div>
+  <div class="top"><h1>Lector de Manga</h1><span class="sp"></span><span class="pill" id="homeConn">Lector: —</span><button class="b" id="homeCfg" title="Configuración">⚙</button></div>
   <div class="body center">
     <button class="b p xl" id="btnIniciar">INICIAR TRABAJO DE MANGA</button>
     <button class="b xl" id="btnSinConexion" style="font-size:22px;min-height:70px">Trabajar sin conexión (carga a mano)</button>
@@ -133,7 +133,7 @@ h2{font-size:22px;margin:0 0 12px}h3{font-size:18px;margin:14px 0 8px}
   <div class="body">
     <div class="card">
       <ul class="check">
-        <li><span class="ic" id="ck1">1</span><div><b>Balanza XR5000</b><small id="ck1t">Buscando…</small></div></li>
+        <li><span class="ic" id="ck1">1</span><div><b id="ck1h">Lector de caravanas</b><small id="ck1t">Buscando…</small></div></li>
         <li><span class="ic" id="ck2">2</span><div><b>Internet</b><small id="ck2t"></small></div></li>
         <li><span class="ic" id="ck3">3</span><div><b>Padrón SENASA</b><small id="ck3t"></small></div></li>
         <li><span class="ic" id="ck4">4</span><div><b>Sesiones pendientes de envío</b><small id="ck4t"></small></div></li>
@@ -167,7 +167,7 @@ h2{font-size:22px;margin:0 0 12px}h3{font-size:18px;margin:14px 0 8px}
     <span class="pill" id="rdSes"></span>
     <span class="sp"></span>
     <div class="cnt"><span class="t" id="cT">0</span><span class="v" id="cV">0</span><span class="a" id="cA">0</span><span class="r" id="cR">0</span></div>
-    <span class="pill" id="rdConn">Balanza: —</span>
+    <span class="pill" id="rdConn">Lector: —</span>
   </div>
   <div class="read" id="rdArea">
     <div class="esp" id="rdEsperando">Esperando lectura de la balanza…</div>
@@ -228,19 +228,19 @@ h2{font-size:22px;margin:0 0 12px}h3{font-size:18px;margin:14px 0 8px}
 
 <!-- DIAGNÓSTICO -->
 <section id="s-diag" class="screen">
-  <div class="top"><h1>Diagnóstico</h1><span class="sp"></span><span class="pill" id="dgConn">Balanza: —</span><button class="b" id="dgVolver">Volver</button></div>
+  <div class="top"><h1>Diagnóstico</h1><span class="sp"></span><span class="pill" id="dgConn">Lector: —</span><button class="b" id="dgVolver">Volver</button></div>
   <div class="body">
     <div class="row" style="margin-bottom:10px">
-      <button class="b" id="dgConectar">Conectar balanza</button>
+      <button class="b" id="dgConectar">Conectar lector</button>
       <button class="b" id="dgDesconectar">Desconectar</button>
       <button class="b" id="dgLimpiar">Limpiar</button>
     </div>
     <div class="log" id="dgLog"></div>
     <div class="row" style="margin-top:12px">
-      <input id="dgSim" placeholder="Simular línea de la balanza, p.ej. 032000123456789,345.5" style="flex:1;min-width:240px">
+      <input id="dgSim" placeholder="Simular línea del lector, p.ej. 032000123456789,345.5" style="flex:1;min-width:240px">
       <button class="b azul" id="dgSimBtn">Enviar</button>
     </div>
-    <p class="muted">Lo que llega por Bluetooth o USB se ve acá tal cual lo manda la balanza. Sirve para ver el formato en la primera prueba.</p>
+    <p class="muted">Lo que llega por Bluetooth o USB se ve acá tal cual lo manda la balanza o el bastón. Sirve para ver el formato en la primera prueba.</p>
   </div>
 </section>
 

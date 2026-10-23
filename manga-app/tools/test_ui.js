@@ -37,8 +37,9 @@ let fallos = 0; const ok = (c, m) => { if (!c) { fallos++; console.log('FALLA:',
     window.Android = {
       version: () => '1.0.0-test', deviceName: () => 'Tablet Prueba', online: () => true,
       hasBluetoothPermission: () => true, requestBluetoothPermission: () => setTimeout(() => Manga.onPermission(true), 5),
-      bluetoothEnabled: () => true, pairedDevices: () => JSON.stringify([{ name: 'XR5000 1234', address: 'AA:BB' }]),
-      connectBluetooth: (a) => setTimeout(() => { window.__st = { connected: true, via: 'bluetooth', device: 'XR5000 1234', error: '' }; Manga.onStatus(window.__st); }, 200),
+      bluetoothEnabled: () => true, pairedDevices: () => JSON.stringify([{ name: 'XR5000 1234', address: 'AA:BB' }, { name: 'XRS2i 777', address: 'CC:DD' }]),
+      __lastBt: null,
+      connectBluetooth: (a) => { window.Android.__lastBt = a; setTimeout(() => { window.__st = { connected: true, via: 'bluetooth', device: a === 'CC:DD' ? 'XRS2i 777' : 'XR5000 1234', error: '' }; Manga.onStatus(window.__st); }, 200); },
       usbDevices: () => '[]', setUsbBaud: () => {}, connectUsb: () => {}, disconnect: () => {}, reconnect: () => {},
       status: () => JSON.stringify(window.__st), openBluetoothSettings: () => {},
       vibrate: () => {}, beep: (k) => window.__beeps.push(k)
@@ -193,6 +194,25 @@ let fallos = 0; const ok = (c, m) => { if (!c) { fallos++; console.log('FALLA:',
   await page.click('#mnCerrar'); await page.click('#clConfirmar'); await page.click('#modalBox button[data-i="1"]');
   await page.waitForSelector('#clMsg .msg.ok', { timeout: 5000 });
   ok(rpcBody && rpcBody.p_sesion.destino === 'CONSUMO' && rpcBody.p_lecturas.length === 2 && rpcBody.p_lecturas.every(l => l.fuente === 'manual'), 'sesión manual enviada con lecturas a mano');
+  // modo bastón XRS2i directo
+  await page.click('#homeCfg');
+  await page.selectOption('#cfgModo', 'baston');
+  ok((await page.textContent('#cfgBtAyuda')).includes('bastón') && (await page.textContent('#cfgBtLabel')).startsWith('Bastón'), 'configuración muestra ayuda del bastón');
+  await page.selectOption('#cfgBt', 'CC:DD');
+  await page.click('#cfgProbarBalanza'); await page.waitForSelector('#cfgBalMsg .msg.ok', { timeout: 5000 });
+  ok(await page.evaluate(() => window.Android.__lastBt) === 'CC:DD' && (await page.textContent('#cfgBalMsg')).includes('XRS2i'), 'conecta al bastón elegido');
+  await page.selectOption('#cfgModo', 'bluetooth');
+  ok(await page.inputValue('#cfgBt') === 'AA:BB', 'la balanza sigue elegida en su modo');
+  await page.selectOption('#cfgModo', 'baston'); ok(await page.inputValue('#cfgBt') === 'CC:DD', 'y el bastón en el suyo');
+  await page.click('#setupVolver');
+  ok((await page.textContent('#homeInfo')).includes('Bastón XRS2i'), 'inicio indica el bastón');
+  await page.click('#btnIniciar');
+  await page.waitForFunction(() => !document.getElementById('ckContinuar').disabled, null, { timeout: 20000 });
+  ok((await page.textContent('#ck1h')) === 'Bastón XRS2i' && (await page.textContent('#ck1t')).includes('XRS2i'), 'chequeo conecta al bastón');
+  await page.click('#ckContinuar');
+  await page.click('#selDestino [data-v=CONSUMO]'); await page.click('#selCat [data-v=VACA]'); await page.click('#selProp [data-v=PEGSA]'); await page.click('#selEmpezar');
+  await linea('032 000000000001'); ok(await color() === 'c-verde' && (await page.textContent('#rdConn')).includes('Bastón'), 'lectura del bastón se procesa igual');
+  await page.click('#rdCerrar'); await page.click('#clConfirmar'); await page.click('#modalBox button[data-i="1"]'); await page.waitForSelector('#s-home.on', { timeout: 6000 });
   await page.screenshot({ path: path.join(__dirname, 'captura_home.png') });
   await browser.close(); server.close();
   console.log(fallos ? `${fallos} fallas` : 'Todas las pruebas de interfaz pasaron');

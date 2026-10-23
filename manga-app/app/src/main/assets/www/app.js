@@ -32,7 +32,12 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { toast('No se pudo guardar: ' + e.message, 4000); } },
   del(k) { try { localStorage.removeItem(k); } catch (e) {} }
 };
-let cfg = store.get('cfg', { email: '', password: '', modo: 'bluetooth', btAddress: '', btName: '', baud: 9600 });
+let cfg = store.get('cfg', { email: '', password: '', modo: 'bluetooth', btAddress: '', btName: '', bastonAddress: '', bastonName: '', baud: 9600 });
+// Qué equipo manda las caravanas según el modo: 'bluetooth' = balanza XR5000, 'baston' = bastón XRS2i directo, 'usb' = balanza por cable
+const MODOS = { bluetooth: { nombre: 'Balanza XR5000', ayuda: 'Primero emparejá la balanza desde los ajustes Bluetooth de la tablet (en el XR5000: Bluetooth encendido y visible).' }, baston: { nombre: 'Bastón XRS2i', ayuda: 'Primero emparejá el bastón desde los ajustes Bluetooth de la tablet (en el XRS2i: Settings → Bluetooth en Manual; Advanced: Connect Mode Default y Output Default). El bastón se conecta a un solo equipo a la vez: si está conectado a la balanza, no puede estar conectado a la tablet.' }, usb: { nombre: 'Balanza XR5000 (cable)', ayuda: '' } };
+function modoInfo() { return MODOS[cfg.modo] || MODOS.bluetooth; }
+function direccionBt() { return cfg.modo === 'baston' ? cfg.bastonAddress : cfg.btAddress; }
+function nombreBt() { return cfg.modo === 'baston' ? cfg.bastonName : cfg.btName; }
 let padron = store.get('padron', null);        // {al, n, rows:{numero:[estado,propietario,categoria,fecha_alta,fecha_baja]}, props:[...]}
 let sesion = store.get('sesion', null);        // sesión abierta
 let pendientes = store.get('pendientes', []);  // sesiones cerradas sin enviar
@@ -175,15 +180,16 @@ function abrirLectura() {
 
 // ---------- conexión con la balanza ----------
 function pintarConn() {
-  const t = conn.connected ? `Balanza: ${conn.via === 'usb' ? 'USB' : 'Bluetooth'} ✓` : (conn.error ? 'Balanza: sin conexión' : 'Balanza: —');
+  const eq = cfg.modo === 'baston' ? 'Bastón' : 'Balanza';
+  const t = conn.connected ? `${eq}: ${conn.via === 'usb' ? 'USB' : 'Bluetooth'} ✓` : (conn.error ? `${eq}: sin conexión` : `${eq}: —`);
   const cls = 'pill ' + (conn.connected ? 'ok' : 'bad');
   ['homeConn', 'rdConn', 'dgConn'].forEach(id => { $(id).textContent = t; $(id).className = cls; $(id).title = conn.error || conn.device; });
 }
 function conectarBalanza() {
   if (cfg.modo === 'usb') { A.setUsbBaud(+cfg.baud || 9600); A.connectUsb(); return true; }
-  if (!cfg.btAddress) { Manga.onLog('No hay balanza Bluetooth elegida en Configuración'); return false; }
+  if (!direccionBt()) { Manga.onLog(`No hay ${cfg.modo === 'baston' ? 'bastón' : 'balanza'} Bluetooth elegido en Configuración`); return false; }
   if (!A.hasBluetoothPermission()) { A.requestBluetoothPermission(); return true; }
-  A.connectBluetooth(cfg.btAddress); return true;
+  A.connectBluetooth(direccionBt()); return true;
 }
 function esperarConexion(ms) {
   return new Promise(res => { const t0 = Date.now(); const iv = setInterval(() => { if (conn.connected || Date.now() - t0 > ms) { clearInterval(iv); res(conn.connected); } }, 300); });
@@ -198,8 +204,8 @@ window.Manga = {
   },
   onStatus(st) { conn = st || conn; pintarConn(); },
   onLog(t) { addLog(t); },
-  onPermission(ok) { if (ok && cfg.modo === 'bluetooth' && cfg.btAddress) A.connectBluetooth(cfg.btAddress); else if (!ok) toast('Sin permiso de Bluetooth no se puede conectar la balanza', 4000); },
-  onResume() { try { conn = JSON.parse(A.status()); } catch (e) {} pintarConn(); if (sesion && !conn.connected && cfg.modo === 'bluetooth') A.reconnect(); }
+  onPermission(ok) { if (ok && cfg.modo !== 'usb' && direccionBt()) A.connectBluetooth(direccionBt()); else if (!ok) toast('Sin permiso de Bluetooth no se puede conectar el lector', 4000); },
+  onResume() { try { conn = JSON.parse(A.status()); } catch (e) {} pintarConn(); if (sesion && !conn.connected && cfg.modo !== 'usb') A.reconnect(); }
 };
 function addLog(t) { logLines.push(new Date().toLocaleTimeString('es-AR') + ' ' + t); if (logLines.length > 300) logLines.shift(); if ($('s-diag').classList.contains('on')) pintarLog(); }
 function pintarLog() { const el = $('dgLog'); el.textContent = logLines.join('\n'); el.scrollTop = el.scrollHeight; }
@@ -208,7 +214,7 @@ function pintarLog() { const el = $('dgLog'); el.textContent = logLines.join('\n
 function irHome() {
   show('home');
   $('homeInfo').innerHTML = (padron ? `Padrón: ${padron.n.toLocaleString('es-AR')} caravanas, actualizado el ${fmtTs(padron.al)}` : 'Todavía no se descargó el padrón') +
-    `<br>Versión ${esc(A.version())} · ${esc(cfg.modo === 'usb' ? 'cable USB' : (cfg.btName || 'Bluetooth sin elegir'))}`;
+    `<br>Versión ${esc(A.version())} · ${esc(cfg.modo === 'usb' ? 'balanza por cable USB' : (nombreBt() ? modoInfo().nombre + ' (' + nombreBt() + ')' : modoInfo().nombre + ' sin elegir'))}`;
   $('homePend').innerHTML = pendientes.length ? `<div class="msg warn">${pendientes.length} sesión(es) cerrada(s) pendiente(s) de envío. <button class="b" id="homeEnviar">Reenviar ahora</button></div>` : '';
   if (pendientes.length) $('homeEnviar').onclick = async () => { try { const r = await enviarPendientes(); toast(r.ok ? `Enviadas ${r.ok}` : ('No se pudo enviar: ' + (r.err && r.err.message))); } catch (e) { toast(e.message); } irHome(); };
   $('homeAbierta').innerHTML = sesion ? `<div class="msg warn">Hay una sesión abierta (${esc(sesion.destino)} · ${esc(sesion.categoria)} · ${esc(sesion.propietario)}, ${contar(sesion).total} lecturas). <button class="b" id="homeSeguir">Continuar</button> <button class="b" id="homeDescartar">Descartar</button></div>` : '';
@@ -227,14 +233,15 @@ function ck(i, estado, txt) { const el = $('ck' + i); el.className = 'ic ' + est
 async function chequeo() {
   show('check'); $('ckContinuar').disabled = true; $('ckContinuar').textContent = 'Continuar';
   [1, 2, 3, 4].forEach(i => ck(i, '', ''));
-  // 1. balanza
+  // 1. lector (balanza o bastón)
   let bal = false;
-  if (sinBalanza) ck(1, 'ok', 'Sin balanza: las caravanas se cargan a mano');
+  $('ck1h').textContent = sinBalanza ? 'Lector de caravanas' : modoInfo().nombre;
+  if (sinBalanza) ck(1, 'ok', 'Sin lector: las caravanas se cargan a mano');
   else {
     ck(1, 'run', 'Conectando…');
     if (conn.connected) bal = true;
     else if (conectarBalanza()) bal = await esperarConexion(CFG.ESPERA_BALANZA_MS);
-    ck(1, bal ? 'ok' : 'bad', bal ? `Conectada por ${conn.via === 'usb' ? 'cable USB' : 'Bluetooth'} (${conn.device})` : (conn.error || 'No se pudo conectar. Revisá que la balanza esté encendida y emparejada.'));
+    ck(1, bal ? 'ok' : 'bad', bal ? `Conectado por ${conn.via === 'usb' ? 'cable USB' : 'Bluetooth'} (${conn.device})` : (conn.error || `No se pudo conectar. Revisá que ${cfg.modo === 'baston' ? 'el bastón esté encendido, emparejado y no conectado a la balanza' : 'la balanza esté encendida y emparejada'}.`));
   }
   // 2. internet
   ck(2, 'run', 'Comprobando…');
@@ -386,25 +393,25 @@ function pintarSetup() {
   $('cfgEmail').value = guardado ? '' : (cfg.email || ''); $('cfgPass').value = '';
   $('cfgModo').value = cfg.modo || 'bluetooth'; $('cfgBaud').value = String(cfg.baud || 9600);
   $('cfgMsg').innerHTML = ''; $('cfgBalMsg').innerHTML = '';
-  pintarModo(); pintarBt();
+  pintarModo();
   $('cfgInfo').textContent = `Versión ${A.version()} · ${A.deviceName()}` + (padron ? ` · padrón del ${fmtTs(padron.al)} (${padron.n} caravanas)` : '');
 }
-function pintarModo() { const usb = $('cfgModo').value === 'usb'; $('cfgBtBox').classList.toggle('hidden', usb); $('cfgUsbBox').classList.toggle('hidden', !usb); if (usb) pintarUsb(); }
+function pintarModo() { const m = $('cfgModo').value, usb = m === 'usb'; $('cfgBtBox').classList.toggle('hidden', usb); $('cfgUsbBox').classList.toggle('hidden', !usb); $('cfgBtLabel').firstChild.textContent = (m === 'baston' ? 'Bastón emparejado ' : 'Balanza emparejada '); $('cfgBtAyuda').textContent = (MODOS[m] || MODOS.bluetooth).ayuda; if (usb) pintarUsb(); else pintarBt(); }
 function pintarBt() {
   if (!A.hasBluetoothPermission()) { A.requestBluetoothPermission(); }
   let devs = []; try { devs = JSON.parse(A.pairedDevices()); } catch (e) {}
   const s = $('cfgBt');
-  s.innerHTML = '<option value="">— elegir —</option>' + devs.map(d => `<option value="${esc(d.address)}" ${d.address === cfg.btAddress ? 'selected' : ''}>${esc(d.name || d.address)}</option>`).join('');
+  const actual = $('cfgModo').value === 'baston' ? cfg.bastonAddress : cfg.btAddress;
+  s.innerHTML = '<option value="">— elegir —</option>' + devs.map(d => `<option value="${esc(d.address)}" ${d.address === actual ? 'selected' : ''}>${esc(d.name || d.address)}</option>`).join('');
   if (!devs.length) s.innerHTML += '<option value="" disabled>No hay equipos emparejados</option>';
   if (!A.bluetoothEnabled()) $('cfgBalMsg').innerHTML = '<div class="msg warn">El Bluetooth de la tablet está apagado.</div>';
 }
 function pintarUsb() { let d = []; try { d = JSON.parse(A.usbDevices()); } catch (e) {} $('cfgUsbInfo').textContent = d.length ? 'Detectado: ' + d.map(x => x.name).join(', ') : 'No se detecta ningún adaptador serie por USB (conectá el cable y volvé a abrir esta pantalla).'; }
-$('cfgModo').onchange = pintarModo;
 $('cfgBtRefrescar').onclick = pintarBt;
 $('cfgBtAjustes').onclick = () => A.openBluetoothSettings();
-$('cfgBt').onchange = () => { const o = $('cfgBt').selectedOptions[0]; cfg.btAddress = o.value; cfg.btName = o.value ? o.textContent : ''; store.set('cfg', cfg); };
+$('cfgBt').onchange = () => { const o = $('cfgBt').selectedOptions[0]; if ($('cfgModo').value === 'baston') { cfg.bastonAddress = o.value; cfg.bastonName = o.value ? o.textContent : ''; } else { cfg.btAddress = o.value; cfg.btName = o.value ? o.textContent : ''; } store.set('cfg', cfg); };
 $('cfgBaud').onchange = () => { cfg.baud = +$('cfgBaud').value; store.set('cfg', cfg); };
-$('cfgModo').addEventListener('change', () => { cfg.modo = $('cfgModo').value; store.set('cfg', cfg); });
+$('cfgModo').addEventListener('change', () => { cfg.modo = $('cfgModo').value; store.set('cfg', cfg); A.disconnect(); pintarModo(); });
 $('cfgProbar').onclick = async () => {
   cfg.email = $('cfgEmail').value.trim(); cfg.password = $('cfgPass').value; token = null;
   msg('cfgMsg', 'warn', 'Probando…');
@@ -415,9 +422,9 @@ $('cfgCambiarUser').onclick = () => { editarUsuario = true; pintarSetup(); };
 $('cfgProbarBalanza').onclick = async () => {
   cfg.modo = $('cfgModo').value; store.set('cfg', cfg);
   msg('cfgBalMsg', 'warn', 'Conectando…');
-  if (!conectarBalanza()) return msg('cfgBalMsg', 'err', 'Elegí la balanza en la lista de equipos emparejados');
+  if (!conectarBalanza()) return msg('cfgBalMsg', 'err', `Elegí ${cfg.modo === 'baston' ? 'el bastón' : 'la balanza'} en la lista de equipos emparejados`);
   const ok = await esperarConexion(CFG.ESPERA_BALANZA_MS);
-  if (ok) msg('cfgBalMsg', 'ok', `Conectada (${conn.device}). Registrá un peso en la balanza y mirá en Diagnóstico si llega la caravana.`);
+  if (ok) msg('cfgBalMsg', 'ok', `Conectado (${conn.device}). ${cfg.modo === 'baston' ? 'Leé una caravana con el bastón' : 'Registrá un peso en la balanza'} y mirá en Diagnóstico si llega la caravana.`);
   else msg('cfgBalMsg', 'err', 'No se pudo conectar: ' + (conn.error || 'sin respuesta'));
 };
 $('cfgDiag').onclick = () => { pintarLog(); show('diag'); };
@@ -426,7 +433,7 @@ $('setupVolver').onclick = irHome;
 
 // --- diagnóstico ---
 $('dgVolver').onclick = () => { show('setup'); pintarSetup(); };
-$('dgConectar').onclick = () => { if (!conectarBalanza()) toast('Elegí la balanza en Configuración'); };
+$('dgConectar').onclick = () => { if (!conectarBalanza()) toast('Elegí el lector en Configuración'); };
 $('dgDesconectar').onclick = () => A.disconnect();
 $('dgLimpiar').onclick = () => { logLines = []; pintarLog(); };
 $('dgSimBtn').onclick = () => { const v = $('dgSim').value; if (!v) return; addLog('(simulada) ' + v); const num = Reglas.extraerCaravana(v); addLog(num ? '  → caravana ' + num + (fila(num) ? ' (en el padrón)' : ' (NO está en el padrón)') : '  → no se encontró un número de 15 dígitos'); if (num && sesion) { procesar(num, 'baston'); toast('Lectura simulada registrada en la sesión abierta'); } $('dgSim').value = ''; };

@@ -1,0 +1,446 @@
+# -*- coding: utf-8 -*-
+"""
+visec_consulta.py — Caravanas Pecuaria
+Consulta el estado VISEC (https://carne.visec.com.ar) de las caravanas electrónicas del padrón (activas y
+salidas) que todavía no lo tienen. Corre todo el día en la PC de la oficina (tarea cada hora, ver INSTALAR_TAREAS.bat).
+
+Flujo (el mismo que se hace a mano en la página, pero con varios lotes a la vez en pestañas distintas):
+  1. Pide a Supabase las caravanas pendientes (visec_pendientes): primero las pedidas desde el portal,
+     después los machos de PEGSA/BULLTRADE, después el resto.
+  2. Entra a VISEC con VISEC_USUARIO / VISEC_CLAVE (sync\\.env). Abre VISEC_PARALELO pestañas y en cada una
+     arma un lote (Mis informes > Agregar, descripción "consulta", pega las caravanas, Guardar) y aprieta
+     "Ejecutar proceso de validación".
+  3. Espera a que cada lote quede FINALIZADO (~1 minuto por caravana, los lotes corren en paralelo).
+     Si en el lote figura "ERROR: NO SE PUDO LEER EL CUIT EN ARCA" vuelve a ejecutar la validación
+     (hasta VISEC_REINTENTOS veces); si persiste, esas caravanas quedan como "ERROR ARCA" y se
+     vuelven a consultar otro día.
+  4. Lee en la lupa del lote el estado y la observación de cada caravana (HABILITADA / INHABILITADA /
+     NÚMERO INEXISTENTE / ...), lo guarda en Supabase (visec_guardar) y descarta el lote en VISEC.
+  5. Apenas termina un lote, en esa misma pestaña arma el siguiente: no hay tiempo ocioso. Sigue hasta que
+     no queden pendientes (o hasta VISEC_MAX_MIN si se fija). La tarea de Windows de cada hora solo lo
+     vuelve a lanzar si no está corriendo (archivo de bloqueo); así también toma las altas nuevas del padrón
+     y las consultas pedidas desde el portal.
+
+Variables en sync\\.env:
+  VISEC_USUARIO, VISEC_CLAVE          usuario y clave de VISEC
+  VISEC_LOTE=50                       caravanas por lote (opcional)
+  VISEC_PARALELO=3                    lotes (pestañas) a la vez (opcional)
+  VISEC_MAX_MIN=0                     minutos máximos por corrida (0 = hasta terminar; la tarea de cada hora lo relanza si murió)
+  VISEC_REINTENTOS=2                  reintentos de validación cuando VISEC no pudo leer ARCA (opcional)
+  VISEC_VISIBLE=0                     poner 1 para ver el navegador (para probar)
+
+Requiere Playwright: correr una vez sync\\INSTALAR_VISEC.bat.
+"""
+import json
+import logging
+import os
+import re
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+import requests
+from dotenv import load_dotenv
+
+AQUI = Path(__file__).resolve().parent
+load_dotenv(AQUI / ".env")
+SB_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SB_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
+VISEC_URL = "https://carne.visec.com.ar"
+USUARIO = os.environ.get("VISEC_USUARIO", "")
+CLAVE = os.environ.get("VISEC_CLAVE", "")
+LOTE = int(os.environ.get("VISEC_LOTE", "50"))
+PARALELO = max(1, int(os.environ.get("VISEC_PARALELO", "3")))
+MAX_MIN = int(os.environ.get("VISEC_MAX_MIN", "0"))   # 0 = sin límite
+REINTENTOS = int(os.environ.get("VISEC_REINTENTOS", "2"))
+VISIBLE = os.environ.get("VISEC_VISIBLE", "0") == "1"
+SEG_POR_CARAVANA = 90          # tope de espera por caravana para que termine la validación
+LOCK = AQUI / "visec_consulta.lock"
+ERROR_ARCA = "ERROR ARCA"
+
+log = logging.getLogger("visec")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
+                    handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler(AQUI / "visec_consulta.log", encoding="utf-8")])
+
+
+# ───────────────────────── Supabase ─────────────────────────
+class Supa:
+    def __init__(self):
+        if not SB_URL or not SB_KEY:
+            raise SystemExit("Faltan SUPABASE_URL / SUPABASE_SERVICE_KEY en sync\\.env")
+        self.h = {"apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Content-Type": "application/json"}
+
+    def rpc(self, fn, args=None):
+        r = requests.post(f"{SB_URL}/rest/v1/rpc/{fn}", headers=self.h, data=json.dumps(args or {}), timeout=120)
+        if r.status_code >= 300:
+            raise RuntimeError(f"rpc {fn}: HTTP {r.status_code} {r.text[:300]}")
+        return r.json() if r.text else None
+
+    def insert(self, tabla, datos):
+        r = requests.post(f"{SB_URL}/rest/v1/{tabla}", headers={**self.h, "Prefer": "return=representation"}, data=json.dumps(datos), timeout=60)
+        if r.status_code >= 300:
+            raise RuntimeError(f"insert {tabla}: HTTP {r.status_code} {r.text[:300]}")
+        return r.json()[0]
+
+    def patch(self, tabla, query, datos):
+        r = requests.patch(f"{SB_URL}/rest/v1/{tabla}?{query}", headers={**self.h, "Prefer": "return=minimal"}, data=json.dumps(datos), timeout=60)
+        if r.status_code >= 300:
+            raise RuntimeError(f"patch {tabla}: HTTP {r.status_code} {r.text[:300]}")
+
+
+# ───────────────────────── Bloqueo (una corrida a la vez) ─────────────────────────
+def tomar_bloqueo():
+    if LOCK.exists():
+        edad_min = (time.time() - LOCK.stat().st_mtime) / 60   # el robot lo toca cada vuelta
+        if edad_min < 20:
+            log.info("Ya hay una corrida VISEC en curso (bloqueo de hace %.0f min); salgo", edad_min)
+            return False
+        log.warning("Bloqueo viejo (%.0f min), lo piso", edad_min)
+    LOCK.write_text(str(os.getpid()))
+    return True
+
+
+def soltar_bloqueo():
+    try:
+        LOCK.unlink()
+    except OSError:
+        pass
+
+
+# ───────────────────────── VISEC (navegador) ─────────────────────────
+def texto(page):
+    try:
+        return page.locator("body").inner_text(timeout=15000)
+    except Exception:
+        return ""
+
+
+def esperar_blazor(page, seg=30):
+    """Blazor Server tarda en conectar; espera a que desaparezcan los spinners y haya contenido."""
+    try:
+        page.wait_for_load_state("networkidle", timeout=seg * 1000)
+    except Exception:
+        pass
+    fin = time.time() + seg
+    while time.time() < fin:
+        if page.locator("[class*=spin]:visible").count() == 0 and texto(page).strip():
+            return
+        time.sleep(1)
+
+
+def logueado(page):
+    return page.locator("#logout").count() > 0 or "Mis informes" in texto(page)
+
+
+def login(page):
+    page.goto(VISEC_URL + "/", wait_until="networkidle")
+    esperar_blazor(page)
+    if logueado(page):
+        log.info("Sesión VISEC ya iniciada"); return
+    if not USUARIO or not CLAVE:
+        raise SystemExit("Faltan VISEC_USUARIO / VISEC_CLAVE en sync\\.env")
+    # Pantalla de ingreso: usuario (email o texto) + clave + botón
+    user = page.locator("input[type=email], input[name*=mail i], input[name*=user i], input[id*=mail i], input[id*=user i], input[type=text]").first
+    pwd = page.locator("input[type=password]").first
+    user.wait_for(timeout=30000)
+    user.fill(USUARIO); pwd.fill(CLAVE)
+    boton = page.locator("button[type=submit], button:has-text('Ingresar'), button:has-text('Iniciar'), input[type=submit]").first
+    boton.click()
+    page.wait_for_timeout(3000); esperar_blazor(page, 40)
+    if not logueado(page):
+        raise RuntimeError("No se pudo iniciar sesión en VISEC (revisar usuario/clave o si la pantalla cambió)")
+    log.info("Sesión VISEC iniciada (%s)", USUARIO)
+
+
+def abrir_lote(page, informe):
+    page.goto(f"{VISEC_URL}/App/LotesConsultas/{informe}", wait_until="networkidle")
+    esperar_blazor(page, 60)
+    # la pantalla del lote tarda en aparecer (Blazor arma el circuito)
+    page.locator("button:has-text('Descartar lote')").first.wait_for(timeout=90000)
+
+
+def crear_lote(page, numeros):
+    page.goto(VISEC_URL + "/App/LotesConsultas/0", wait_until="networkidle")
+    esperar_blazor(page, 40)
+    page.locator("textarea").first.wait_for(timeout=60000)
+    desc = page.locator("label:has-text('DESCRIPCIÓN') + input, label:has-text('Descripción') + input").first
+    if desc.count() == 0:
+        desc = page.locator("input[type=text]:not([placeholder*='DTE'])").first
+    desc.click(); desc.fill("consulta")
+    ta = page.locator("textarea").first
+    ta.click(); ta.fill("\n".join(numeros))
+    page.locator("button:has-text('Guardar')").first.click()
+    page.wait_for_timeout(2000)
+    fin = time.time() + 60
+    while time.time() < fin:
+        m = re.search(r"/App/LotesConsultas/(\d+)", page.url)
+        if m and m.group(1) != "0" and "Registro guardado" in texto(page):
+            return m.group(1)
+        time.sleep(1)
+    raise RuntimeError("No se pudo guardar el lote (no apareció 'Registro guardado con éxito')")
+
+
+def ejecutar_validacion(page):
+    page.locator("button:has-text('Ejecutar proceso de validación')").first.click()
+
+
+def estado_lote(page, w):
+    """Mira la pantalla del lote: devuelve 'finalizado', 'validando' o 'caido' (circuito Blazor cortado)."""
+    txt = texto(page)
+    m = re.findall(r"\d{2}:\d{2}:\d{2} - [^\n]+", txt)
+    if m and m[-1] != w.get("ultimo"):
+        w["ultimo"] = m[-1]; log.info("  [%s] %s", w["informe"], m[-1])
+    if re.search(r"ESTADO\s*\n\s*FINALIZADO", txt) and page.locator("[class*=spin]:visible").count() == 0:
+        return "finalizado"
+    if ("reload" in txt.lower() and "blazor" in txt.lower()) or "Attempting to reconnect" in txt or "Could not reconnect" in txt:
+        return "caido"
+    return "validando"
+
+
+def renspas_con_error(page):
+    """RENSPAs cuya columna 'CUIT ESTADO' dice ERROR (p. ej. 'NO SE PUDO LEER EL CUIT EN ARCA')."""
+    errores = set()
+    for tabla in page.locator("table").all():
+        try:
+            head = tabla.locator("th").all_inner_texts()
+        except Exception:
+            continue
+        if not any("RENSPA" in h.upper() for h in head):
+            continue
+        for tr in tabla.locator("tbody tr").all():
+            celdas = [c.inner_text().strip() for c in tr.locator("td").all()]
+            if len(celdas) >= 4 and "ERROR" in celdas[3].upper():
+                errores.add(celdas[0])
+        break
+    return errores
+
+
+def _siguiente_pagina(cont):
+    """Paginador (botones numerados o ul.pagination): aprieta el número siguiente al activo. True si pasó de página."""
+    activa = cont.locator(".btn-group button.active, .btn-group .active, ul.pagination li.active, .pagination .active").first
+    if activa.count() == 0:
+        return False
+    try:
+        n_act = int(activa.inner_text().strip())
+    except ValueError:
+        return False
+    sig = cont.locator(f".btn-group button:text-is('{n_act + 1}'), ul.pagination li:not(.active) >> text='{n_act + 1}', .pagination >> text='{n_act + 1}'").first
+    if sig.count() == 0:
+        return False
+    sig.click()
+    return True
+
+
+def leer_resultados(page, informe, esperados):
+    """Abre la lupa del lote y lee CARAVANA / ESTADO / OBSERVACIONES (paginado)."""
+    filas = {}
+    try:
+        page.locator("label.form-label a:has(i.bx-search-alt), label a:has(i[class*=search])").first.click()
+        modal = page.locator(".modal.show, .modal[style*='block']").first
+        modal.wait_for(timeout=60000)
+        modal.locator("table tbody tr").first.wait_for(timeout=90000)
+        for _ in range(500):
+            for tr in modal.locator("table tbody tr").all():
+                celdas = [c.inner_text().strip() for c in tr.locator("td").all()]
+                if len(celdas) >= 2 and re.match(r"^032\d{12}$", celdas[0]):
+                    est = celdas[1].upper().replace("NUMERO", "NÚMERO").replace("VALIDACION", "VALIDACIÓN")
+                    obs = celdas[2] if len(celdas) > 2 and celdas[2] else None
+                    filas[celdas[0]] = {"caravana": celdas[0], "estado": est, "observacion": obs}
+            if not _siguiente_pagina(modal):
+                break
+            page.wait_for_timeout(1500)
+    except Exception as e:
+        log.warning("  [%s] No pude leer la lupa (%s); leo el listado", informe, e)
+    if len(filas) < len(esperados):
+        filas.update(leer_listado(page, informe))
+    faltan = [n for n in esperados if n not in filas]
+    if faltan:
+        log.warning("  [%s] %d caravanas del lote no aparecen en el resultado (quedan pendientes): %s…", informe, len(faltan), ", ".join(faltan[:5]))
+    return list(filas.values())
+
+
+def leer_listado(page, informe):
+    """Plan B: pantalla Caravanas del informe (NÚMERO / ESPECIE / ESTADO, sin observaciones)."""
+    filas = {}
+    try:
+        page.goto(f"{VISEC_URL}/App/LotesConsultas/Caravanas/{informe}", wait_until="networkidle")
+        esperar_blazor(page, 60)
+        page.locator("table tbody tr").first.wait_for(timeout=120000)
+        for _ in range(500):
+            for tr in page.locator("table tbody tr").all():
+                celdas = [c.inner_text().strip() for c in tr.locator("td").all()]
+                if len(celdas) >= 3 and re.match(r"^032\d{12}$", celdas[0]):
+                    est = celdas[2].upper().replace("NUMERO", "NÚMERO").replace("VALIDACION", "VALIDACIÓN")
+                    filas[celdas[0]] = {"caravana": celdas[0], "estado": est, "observacion": None}
+            if not _siguiente_pagina(page):
+                break
+            page.wait_for_timeout(1500); esperar_blazor(page, 30)
+    except Exception as e:
+        log.warning("  [%s] Tampoco pude leer el listado: %s", informe, e)
+    return filas
+
+
+def descartar_lote(page, informe):
+    try:
+        abrir_lote(page, informe)
+        page.locator("button:has-text('Descartar lote')").first.click()
+        page.wait_for_timeout(1000)
+        conf = page.locator(".modal.show button:has-text('Confirmar'), button:has-text('Confirmar')").first
+        if conf.count():
+            conf.click(); page.wait_for_timeout(2000)
+        log.info("  [%s] Lote descartado", informe)
+    except Exception as e:  # no es grave: el informe queda en VISEC
+        log.warning("  [%s] No se pudo descartar el lote: %s", informe, e)
+
+
+# ───────────────────────── Lotes en paralelo, sin tiempo ocioso ─────────────────────────
+def nuevo_lote(ctx, sb, en_curso):
+    """Pide pendientes (sin las que ya están en algún lote abierto) y arma un lote en una pestaña nueva."""
+    pend = sb.rpc("visec_pendientes", {"p_max": LOTE * (PARALELO + 1)}) or []
+    nums = [n for n in pend if n not in en_curso][:LOTE]
+    if not nums:
+        return None
+    page = ctx.new_page(); page.set_default_timeout(60000)
+    try:
+        informe = crear_lote(page, nums)
+        abrir_lote(page, informe)
+        ejecutar_validacion(page)
+        log.info("  [%s] Lote de %d caravanas guardado; validando", informe, len(nums))
+        return {"page": page, "informe": informe, "nums": nums, "reintentos": 0, "fin": None,
+                "tope": time.time() + max(600, len(nums) * SEG_POR_CARAVANA)}
+    except Exception as e:
+        log.error("  No pude armar un lote (%s); esas %d caravanas quedan para más adelante", e, len(nums))
+        try:
+            if not logueado(page):
+                log.warning("La sesión VISEC se cerró; vuelvo a entrar")
+                login(page)
+        except Exception as e2:
+            log.warning("No pude volver a entrar a VISEC: %s", e2)
+        page.close()
+        return {"page": None, "informe": None, "nums": nums, "fin": "error", "falla": True}
+
+
+def cerrar_lote(sb, w):
+    """Lee los resultados del lote terminado, los guarda, descarta el lote y cierra la pestaña. Devuelve cuántos guardó."""
+    page, informe = w["page"], w["informe"]
+    n = 0
+    try:
+        filas = leer_resultados(page, informe, w["nums"])
+        errores = w.get("errores") or set()
+        if errores:
+            # inhabilitadas por un RENSPA que VISEC no pudo verificar en ARCA: no es un resultado real
+            n_err = 0
+            for f in filas:
+                if f["estado"] == "INHABILITADA" and any(r in (f["observacion"] or "") for r in errores):
+                    f["estado"] = ERROR_ARCA; n_err += 1
+            if n_err:
+                log.warning("  [%s] %d caravanas quedan como %s (se reconsultan otro día)", informe, n_err, ERROR_ARCA)
+        n = sb.rpc("visec_guardar", {"p_filas": filas, "p_informe": informe}) or 0
+        resumen = {e: sum(1 for f in filas if f["estado"] == e) for e in {f["estado"] for f in filas}}
+        log.info("  [%s] Guardados %d resultados: %s", informe, n, ", ".join(f"{k}={v}" for k, v in sorted(resumen.items())))
+    except Exception as e:
+        log.error("  [%s] No pude leer/guardar los resultados: %s", informe, e)
+    descartar_lote(page, informe)
+    try:
+        page.close()
+    except Exception:
+        pass
+    return n
+
+
+def revisar(w):
+    """Avanza el estado de un lote en validación. Deja w['fin'] = 'ok' / 'timeout' cuando está para leer."""
+    page = w["page"]
+    try:
+        est = estado_lote(page, w)
+    except Exception as e:
+        log.warning("  [%s] No pude leer la pantalla (%s); recargo", w["informe"], e); est = "caido"
+    if est == "caido":
+        log.warning("  [%s] Conexión Blazor caída, recargo el lote", w["informe"])
+        try:
+            abrir_lote(page, w["informe"])
+        except Exception as e:
+            log.warning("  [%s] No pude recargar: %s", w["informe"], e)
+    elif est == "finalizado":
+        errores = renspas_con_error(page)
+        if errores and w["reintentos"] < REINTENTOS:
+            w["reintentos"] += 1; w["ultimo"] = ""
+            w["tope"] = time.time() + max(600, len(w["nums"]) * SEG_POR_CARAVANA)
+            log.warning("  [%s] VISEC no pudo leer ARCA para %s; vuelvo a ejecutar la validación (%d/%d)",
+                        w["informe"], ", ".join(sorted(errores)), w["reintentos"], REINTENTOS)
+            try:
+                ejecutar_validacion(page); time.sleep(5)
+            except Exception as e:
+                log.warning("  [%s] No pude reejecutar: %s", w["informe"], e); w["fin"] = "ok"; w["errores"] = errores
+        else:
+            w["fin"] = "ok"; w["errores"] = errores
+    elif time.time() > w["tope"]:
+        log.warning("  [%s] El lote no terminó en el tiempo previsto; leo lo que haya", w["informe"])
+        w["fin"] = "timeout"; w["errores"] = set()
+
+
+def main():
+    from playwright.sync_api import sync_playwright
+    if not tomar_bloqueo():
+        return
+    sb = Supa()
+    corrida = sb.insert("visec_corridas", {"estado": "corriendo"})["id"]
+    inicio = time.time(); total = 0; informes = []; fallas_seguidas = 0
+    try:
+        if not (sb.rpc("visec_pendientes", {"p_max": 1}) or []):
+            sb.patch("visec_corridas", f"id=eq.{corrida}", {"estado": "sin_pendientes", "fin": datetime.now().astimezone().isoformat(), "cantidad": 0})
+            log.info("No hay caravanas pendientes de consulta VISEC"); return
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=not VISIBLE)
+            ctx = browser.new_context(viewport={"width": 1400, "height": 900})
+            page = ctx.new_page(); page.set_default_timeout(60000)
+            login(page)
+            page.close()
+            workers = []          # lotes abiertos (uno por pestaña)
+            sin_pendientes = False
+            while True:
+                hay_tiempo = MAX_MIN <= 0 or (time.time() - inicio) < MAX_MIN * 60
+                # llenar las pestañas libres con lotes nuevos (apenas se libera una, arranca otro lote)
+                while hay_tiempo and not sin_pendientes and len(workers) < PARALELO and fallas_seguidas < 3:
+                    en_curso = {n for w in workers for n in w["nums"]}
+                    w = nuevo_lote(ctx, sb, en_curso)
+                    if w is None:
+                        sin_pendientes = True; break
+                    if w.get("falla"):
+                        fallas_seguidas += 1; time.sleep(30); continue
+                    fallas_seguidas = 0
+                    workers.append(w)
+                if not workers:
+                    break
+                time.sleep(15)
+                LOCK.touch()
+                for w in workers:
+                    if w["fin"] is None:
+                        revisar(w)
+                # cerrar los terminados (y en la próxima vuelta se abre otro lote en su lugar)
+                listos = [w for w in workers if w["fin"] is not None]
+                for w in listos:
+                    informes.append(w["informe"])
+                    total += cerrar_lote(sb, w)
+                    workers.remove(w)
+                    try:   # avance visible en el portal (Inicio > VISEC)
+                        sb.patch("visec_corridas", f"id=eq.{corrida}", {"cantidad": total, "informe": ",".join(informes[-30:]), "detalle": f"{len(informes)} lote(s), corriendo"})
+                    except Exception:
+                        pass
+                    sin_pendientes = False   # pueden haber aparecido pedidos o altas nuevas
+            browser.close()
+        sb.patch("visec_corridas", f"id=eq.{corrida}", {"estado": "ok", "fin": datetime.now().astimezone().isoformat(), "cantidad": total,
+                                                       "informe": ",".join(informes), "detalle": f"{len(informes)} lote(s)"})
+        log.info("Listo: %d resultados en %d lote(s)", total, len(informes))
+    except Exception as e:
+        log.exception("Error en la consulta VISEC")
+        sb.patch("visec_corridas", f"id=eq.{corrida}", {"estado": "error", "fin": datetime.now().astimezone().isoformat(), "cantidad": total,
+                                                       "informe": ",".join(informes), "detalle": str(e)[:900]})
+        sys.exit(1)
+    finally:
+        soltar_bloqueo()
+
+
+if __name__ == "__main__":
+    main()

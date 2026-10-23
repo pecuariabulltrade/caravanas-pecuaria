@@ -30,9 +30,20 @@ https://github.com/pecuariabulltrade/caravanas-pecuaria/releases/latest
    - **Balanza**: Bluetooth o cable USB-C (ver punto 4).
 5. Para actualizar a una versión nueva: desinstalar la app y volver a instalar el APK nuevo (si no se configuró firma estable, ver abajo).
 
-## 4. Conectar la balanza XR5000
+## 4. Conectar el lector (balanza o bastón)
 
-### Por Bluetooth (recomendado)
+En ⚙ Configuración → Conexión hay tres opciones:
+- **Balanza XR5000 por Bluetooth**: el bastón va conectado a la balanza y la balanza manda la caravana a la tablet.
+- **Bastón XRS2i directo por Bluetooth**: el bastón manda la caravana directo a la tablet (sin balanza).
+- **Balanza XR5000 por cable USB-C**.
+
+### Bastón XRS2i directo
+1. En el bastón: *Settings → Bluetooth*: **Manual**; en *Advanced*: **Connect Mode: Default** y **Output: Default**.
+2. En la tablet: *Ajustes → Bluetooth* → emparejar con el XRS2i (PIN `0000` o `1234` si lo pide).
+3. En la app: Configuración → Conexión: *Bastón XRS2i directo* → elegirlo en la lista → *Probar conexión*. Leer una caravana y mirar en Diagnóstico que llegue.
+4. El bastón se conecta a un solo equipo a la vez: si está vinculado a la balanza, no puede mandarle a la tablet (y al revés). Para trabajar con la balanza, volver a la opción *Balanza XR5000 por Bluetooth*.
+
+### Balanza XR5000 por Bluetooth
 1. En el XR5000: *Settings > Bluetooth*: encendido y visible (discoverable). El bastón ya tiene que estar conectado a la balanza.
 2. En la tablet: *Ajustes > Bluetooth* > emparejar con el XR5000 (aparece como "XR5000" + número). Si pide PIN, probar `0000` o `1234`.
 3. En el XR5000: *Settings > Connections* (o *Output*): **Output: EID, Weight when weight is recorded**. Con esto la balanza manda la caravana a la tablet cada vez que registra un animal.
