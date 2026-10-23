@@ -355,7 +355,7 @@ function abrirManual() {
   const manual = sesion && sesion.modo === 'manual';
   mn = ''; pintarManual(); $('mnRes').innerHTML = ''; pintarContadores();
   $('mnTitulo').textContent = manual ? `Sin conexión · ${sesion.destino === 'EXPORTACION' ? 'Exportación' : 'Consumo'} · ${sesion.categoria} · ${sesion.propietario}` : 'Ingresar a mano';
-  $('mnVolver').classList.toggle('hidden', manual); $('mnBottom').classList.toggle('hidden', !manual);
+  $('mnVolver').classList.toggle('hidden', manual); $('mnBottom').classList.remove('hidden');
   pintarBanner(manual ? sesion.lecturas.filter(l => !l.borrada).slice(-1)[0] : null);
   show('manual');
 }

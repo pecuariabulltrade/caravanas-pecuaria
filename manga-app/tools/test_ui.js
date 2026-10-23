@@ -115,7 +115,7 @@ let fallos = 0; const ok = (c, m) => { if (!c) { fallos++; console.log('FALLA:',
   ok((await page.textContent('#cT')) === '6', 'dos No guardar seguidos quitan las dos últimas');
 
   // manual
-  await page.click('#rdManual'); ok(await page.isVisible('#s-manual'), 'teclado manual');
+  await page.click('#rdManual'); ok(await page.isVisible('#s-manual') && await page.isVisible('#mnDescartar') && await page.isVisible('#mnVolver'), 'teclado manual con Descartar sesión y Volver');
   for (const k of '200001') await page.click(`.pad [data-k="${k}"]`);
   await page.click('.pad [data-k=OK]');
   ok(await page.isVisible('#s-read') && await color() === 'c-verde' && (await page.textContent('#rdFuente')).includes('a mano'), 'manual 6 dígitos único → verde y marcada a mano');
