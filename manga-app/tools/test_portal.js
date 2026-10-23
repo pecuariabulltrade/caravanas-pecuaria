@@ -57,6 +57,16 @@ window.supabase = { createClient: () => {
   await page.click('#sgExcel'); await page.waitForTimeout(300);
   const x = await page.evaluate(() => window.__xlsx && { n: window.__xlsx.n, hojas: Object.keys(window.__xlsx.wb.s), lect: window.__xlsx.wb.s.Lecturas.length });
   ok(x && x.hojas.join() === 'Sesiones,Lecturas' && x.lect === 3, 'Excel con dos hojas: ' + JSON.stringify(x));
+  // botones por sesión
+  await page.evaluate(() => { window.__clip = null; navigator.clipboard.writeText = async t => { window.__clip = t; }; });
+  await page.click('#sgTabla button[data-copiar]'); await page.waitForTimeout(300);
+  const clip = await page.evaluate(() => window.__clip);
+  ok(clip === '032000000000001\n032000000000002', 'Copiar caravanas de la sesión excluye la borrada: ' + JSON.stringify(clip));
+  ok((await page.evaluate(() => document.querySelectorAll('#sgTabla tr').length)) === 2, 'copiar no despliega la sesión');
+  await page.evaluate(() => { window.__xlsx = null; });
+  await page.click('#sgTabla button[data-xls]'); await page.waitForTimeout(300);
+  const x1 = await page.evaluate(() => window.__xlsx && { n: window.__xlsx.n, hojas: Object.keys(window.__xlsx.wb.s), lect: window.__xlsx.wb.s.Lecturas.length, ses: window.__xlsx.wb.s['Sesión'].length });
+  ok(x1 && x1.n.startsWith('sesion_manga_2026-10-22_') && x1.n.includes('PEGSA') && x1.hojas.join() === 'Sesión,Lecturas' && x1.lect === 3 && x1.ses === 1, 'Excel de una sesión: ' + JSON.stringify(x1));
   await page.screenshot({ path: path.join(__dirname, 'captura_portal_sesiones.png') });
   await browser.close(); server.close();
   console.log(fallos ? `${fallos} fallas` : 'Pruebas del portal OK');
