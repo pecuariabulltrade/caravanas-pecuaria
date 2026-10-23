@@ -9,8 +9,10 @@ create table if not exists visec_consultas (
   observacion    text,
   informe        text,                   -- nro de informe (lote) en VISEC
   fecha          date not null default current_date,
-  actualizado_en timestamptz not null default now()
+  actualizado_en timestamptz not null default now(),
+  intentos       int not null default 1       -- veces que se consultó (para no reintentar eternamente los ERROR ARCA)
 );
+alter table visec_consultas add column if not exists intentos int not null default 1;
 create index if not exists visec_consultas_estado_idx on visec_consultas(estado);
 
 create table if not exists visec_solicitudes (
@@ -46,7 +48,7 @@ revoke all on visec_consultas, visec_solicitudes, visec_corridas from anon;
 -- Caravanas a consultar: las electrónicas que están en el padrón (ACTIVAS y SALIDAS; las vírgenes, bajas y
 -- anuladas no). Orden: 1) pedidas a mano desde el portal, 2) machos (MACHO/TORO) de PEGSA y BULLTRADE,
 -- 3) el resto; dentro de cada grupo primero las activas y las de alta más reciente.
--- Se reintentan las que quedaron con resultado provisorio (EN PROCESO / EN ESPERA / EN VALIDACIÓN / ERROR ARCA) de días anteriores.
+-- Se reintentan las que quedaron con resultado provisorio (EN PROCESO / EN ESPERA / EN VALIDACIÓN / ERROR ARCA) de días anteriores, hasta 3 intentos.
 -- ERROR ARCA: VISEC no pudo leer el CUIT en ARCA al validar (lo pone el robot; no es un resultado real).
 create or replace function visec_pendientes(p_max int default 100) returns setof text language sql stable security definer as $$
   select numero from (
@@ -62,7 +64,7 @@ create or replace function visec_pendientes(p_max int default 100) returns setof
       left join propietarios p on p.id = c.propietario_id
       left join visec_consultas v on v.caravana = c.numero
      where c.tipo = 'electronica' and c.estado in ('activa','salida')
-       and (v.caravana is null or (v.estado in ('EN PROCESO','EN ESPERA','EN VALIDACIÓN','ERROR ARCA') and v.fecha < current_date))
+       and (v.caravana is null or (v.estado in ('EN PROCESO','EN ESPERA','EN VALIDACIÓN','ERROR ARCA') and v.fecha < current_date and v.intentos <= 3))
   ) u order by numero, prio) t
   order by prio, (estado <> 'activa'), fecha_alta desc nulls last, numero limit p_max;
 $$;
@@ -76,7 +78,7 @@ begin
     from jsonb_to_recordset(p_filas) as x(caravana text, estado text, observacion text)
    where x.caravana ~ '^032[0-9]{12}$' and coalesce(x.estado,'') <> ''
   on conflict (caravana) do update set estado = excluded.estado, observacion = excluded.observacion,
-     informe = excluded.informe, fecha = excluded.fecha, actualizado_en = now();
+     informe = excluded.informe, fecha = excluded.fecha, actualizado_en = now(), intentos = visec_consultas.intentos + 1;
   get diagnostics n = row_count;
   update visec_solicitudes s set atendido = true
    where not s.atendido and s.caravana in (select x.caravana from jsonb_to_recordset(p_filas) as x(caravana text));
@@ -163,8 +165,10 @@ select p.nombre as propietario,
        count(*) filter (where v.estado = 'HABILITADA') as habilitadas,
        count(*) filter (where v.estado = 'INHABILITADA') as inhabilitadas,
        count(*) filter (where v.estado = 'NÚMERO INEXISTENTE') as inexistentes,
-       count(*) filter (where v.estado in ('EN PROCESO','EN ESPERA','EN VALIDACIÓN','ERROR ARCA')) as en_proceso,
-       count(*) filter (where v.caravana is null) as sin_consultar
+       count(*) filter (where v.estado = 'ERROR ARCA') as error_arca,
+       count(*) filter (where v.estado in ('EN PROCESO','EN ESPERA','EN VALIDACIÓN')) as en_proceso,
+       count(*) filter (where v.caravana is null) as sin_consultar,
+       count(*) as total
   from caravanas c join propietarios p on p.id = c.propietario_id
   left join visec_consultas v on v.caravana = c.numero
  where c.tipo = 'electronica' and c.estado in ('activa','salida')

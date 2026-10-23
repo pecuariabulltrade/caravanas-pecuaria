@@ -11,9 +11,9 @@ Flujo (el mismo que se hace a mano en la página, pero con varios lotes a la vez
      arma un lote (Mis informes > Agregar, descripción "consulta", pega las caravanas, Guardar) y aprieta
      "Ejecutar proceso de validación".
   3. Espera a que cada lote quede FINALIZADO (~1 minuto por caravana, los lotes corren en paralelo).
-     Si en el lote figura "ERROR: NO SE PUDO LEER EL CUIT EN ARCA" vuelve a ejecutar la validación
-     (hasta VISEC_REINTENTOS veces); si persiste, esas caravanas quedan como "ERROR ARCA" y se
-     vuelven a consultar otro día.
+     Si en el lote figura "ERROR: NO SE PUDO LEER EL CUIT EN ARCA" para un RENSPA, las caravanas que
+     VISEC inhabilitó por ese RENSPA quedan como "ERROR ARCA" (no es un resultado real) y se vuelven a
+     consultar en un lote nuevo otro día, hasta VISEC_REINTENTOS veces más.
   4. Lee en la lupa del lote el estado y la observación de cada caravana (HABILITADA / INHABILITADA /
      NÚMERO INEXISTENTE / ...), lo guarda en Supabase (visec_guardar) y descarta el lote en VISEC.
   5. Apenas termina un lote, en esa misma pestaña arma el siguiente: no hay tiempo ocioso. Sigue hasta que
@@ -26,7 +26,7 @@ Variables en sync\\.env:
   VISEC_LOTE=50                       caravanas por lote (opcional)
   VISEC_PARALELO=3                    lotes (pestañas) a la vez (opcional)
   VISEC_MAX_MIN=0                     minutos máximos por corrida (0 = hasta terminar; la tarea de cada hora lo relanza si murió)
-  VISEC_REINTENTOS=2                  reintentos de validación cuando VISEC no pudo leer ARCA (opcional)
+  VISEC_REINTENTOS=2                  reconsultas (otros días) de las que quedaron ERROR ARCA (opcional; lo aplica Supabase)
   VISEC_VISIBLE=0                     poner 1 para ver el navegador (para probar)
 
 Requiere Playwright: correr una vez sync\\INSTALAR_VISEC.bat.
@@ -90,13 +90,27 @@ class Supa:
 
 
 # ───────────────────────── Bloqueo (una corrida a la vez) ─────────────────────────
+def _proceso_vivo(pid):
+    """¿Sigue corriendo el proceso que dejó el bloqueo? (Windows: tasklist)"""
+    try:
+        import subprocess
+        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True, timeout=20).stdout
+        return str(pid) in out and "python" in out.lower()
+    except Exception:
+        return True   # ante la duda, asumimos que sí
+
+
 def tomar_bloqueo():
     if LOCK.exists():
         edad_min = (time.time() - LOCK.stat().st_mtime) / 60   # el robot lo toca cada vuelta
-        if edad_min < 20:
-            log.info("Ya hay una corrida VISEC en curso (bloqueo de hace %.0f min); salgo", edad_min)
+        try:
+            pid = int(LOCK.read_text().strip() or 0)
+        except ValueError:
+            pid = 0
+        if edad_min < 20 and pid and _proceso_vivo(pid):
+            log.info("Ya hay una corrida VISEC en curso (proceso %d, bloqueo de hace %.0f min); salgo", pid, edad_min)
             return False
-        log.warning("Bloqueo viejo (%.0f min), lo piso", edad_min)
+        log.warning("Bloqueo viejo o de un proceso que ya no existe (pid %s, hace %.0f min); lo piso", pid, edad_min)
     LOCK.write_text(str(os.getpid()))
     return True
 
@@ -133,24 +147,57 @@ def logueado(page):
     return page.locator("#logout").count() > 0 or "Mis informes" in texto(page)
 
 
+def _describir_formulario(page):
+    """Para el log: qué campos y botones hay en la pantalla (sirve para ajustar el robot si VISEC cambia)."""
+    try:
+        return page.evaluate("""() => [...document.querySelectorAll('input,button,a')]
+            .filter(e => e.offsetParent && !/goog/.test(e.id))
+            .map(e => e.tagName.toLowerCase() + '[' + (e.type||'') + (e.id ? ' #'+e.id : '') + (e.name ? ' name='+e.name : '')
+                      + (e.placeholder ? ' ph='+e.placeholder : '') + ']' + (e.textContent||'').trim().slice(0,25))
+            .slice(0, 40).join(' ; ')""")
+    except Exception as e:
+        return f"(no pude leer el formulario: {e})"
+
+
 def login(page):
     page.goto(VISEC_URL + "/", wait_until="networkidle")
-    esperar_blazor(page)
+    esperar_blazor(page, 40)
     if logueado(page):
         log.info("Sesión VISEC ya iniciada"); return
     if not USUARIO or not CLAVE:
         raise SystemExit("Faltan VISEC_USUARIO / VISEC_CLAVE en sync\\.env")
-    # Pantalla de ingreso: usuario (email o texto) + clave + botón
-    user = page.locator("input[type=email], input[name*=mail i], input[name*=user i], input[id*=mail i], input[id*=user i], input[type=text]").first
+    log.info("Pantalla de ingreso (%s): %s", page.url, _describir_formulario(page))
+    try:
+        page.screenshot(path=str(AQUI / "visec_login_1.png"))
+    except Exception:
+        pass
+    # Si hay un botón/enlace de "Ingresar" antes del formulario, apretarlo
+    if page.locator("input[type=password]").count() == 0:
+        ent = page.locator("a:has-text('Ingres'), button:has-text('Ingres'), a:has-text('Iniciar'), button:has-text('Iniciar'), a:has-text('Login'), a:has-text('Acceder')").first
+        if ent.count():
+            ent.click(); page.wait_for_timeout(2000); esperar_blazor(page, 30)
     pwd = page.locator("input[type=password]").first
-    user.wait_for(timeout=30000)
-    user.fill(USUARIO); pwd.fill(CLAVE)
-    boton = page.locator("button[type=submit], button:has-text('Ingresar'), button:has-text('Iniciar'), input[type=submit]").first
-    boton.click()
-    page.wait_for_timeout(3000); esperar_blazor(page, 40)
-    if not logueado(page):
-        raise RuntimeError("No se pudo iniciar sesión en VISEC (revisar usuario/clave o si la pantalla cambió)")
-    log.info("Sesión VISEC iniciada (%s)", USUARIO)
+    pwd.wait_for(timeout=30000)
+    # usuario: el campo de texto/email visible que está antes de la clave
+    user = page.locator("input[type=email]:visible, input[type=text]:visible, input:not([type]):visible").first
+    user.click(); user.fill(USUARIO)
+    pwd.click(); pwd.fill(CLAVE)
+    boton = page.locator("button[type=submit]:visible, button:has-text('Ingresar'), button:has-text('Iniciar'), button:has-text('Entrar'), button:has-text('Acceder'), input[type=submit]").first
+    if boton.count():
+        boton.click()
+    else:
+        pwd.press("Enter")
+    fin = time.time() + 90
+    while time.time() < fin:
+        page.wait_for_timeout(2000)
+        if logueado(page):
+            log.info("Sesión VISEC iniciada (%s)", USUARIO); return
+    try:
+        page.screenshot(path=str(AQUI / "visec_login_2.png"))
+    except Exception:
+        pass
+    log.error("Después de enviar el formulario (%s): %s | texto: %s", page.url, _describir_formulario(page), texto(page).strip().replace("\n", " / ")[:300])
+    raise RuntimeError("No se pudo iniciar sesión en VISEC (revisar usuario/clave o si la pantalla cambió; ver visec_login_1.png y visec_login_2.png)")
 
 
 def abrir_lote(page, informe):
@@ -164,21 +211,24 @@ def crear_lote(page, numeros):
     page.goto(VISEC_URL + "/App/LotesConsultas/0", wait_until="networkidle")
     esperar_blazor(page, 40)
     page.locator("textarea").first.wait_for(timeout=60000)
-    desc = page.locator("label:has-text('DESCRIPCIÓN') + input, label:has-text('Descripción') + input").first
-    if desc.count() == 0:
-        desc = page.locator("input[type=text]:not([placeholder*='DTE'])").first
+    # Descripción: el primer input que sigue a la etiqueta "Descripción" (el buscador del encabezado y el
+    # campo de DTE también son input[type=text], por eso no se puede tomar "el primero")
+    desc = page.locator("label:has-text('Descripci')").first.locator("xpath=following::input[@type='text'][1]")
+    if desc.count() == 0 or not desc.first.is_visible():
+        desc = page.locator("input[type=text]:visible:not([placeholder])").first
     desc.click(); desc.fill("consulta")
     ta = page.locator("textarea").first
     ta.click(); ta.fill("\n".join(numeros))
     page.locator("button:has-text('Guardar')").first.click()
     page.wait_for_timeout(2000)
-    fin = time.time() + 60
+    fin = time.time() + 150          # VISEC a veces tarda más de un minuto en responder al Guardar
     while time.time() < fin:
         m = re.search(r"/App/LotesConsultas/(\d+)", page.url)
-        if m and m.group(1) != "0" and "Registro guardado" in texto(page):
-            return m.group(1)
-        time.sleep(1)
-    raise RuntimeError("No se pudo guardar el lote (no apareció 'Registro guardado con éxito')")
+        if m and m.group(1) != "0":
+            if "Registro guardado" in texto(page) or time.time() > fin - 120:
+                return m.group(1)
+        time.sleep(2)
+    raise RuntimeError("No se pudo guardar el lote (no apareció 'Registro guardado con éxito'): " + texto(page).strip().replace("\n", " / ")[:200])
 
 
 def ejecutar_validacion(page):
@@ -301,8 +351,9 @@ def nuevo_lote(ctx, sb, en_curso):
     nums = [n for n in pend if n not in en_curso][:LOTE]
     if not nums:
         return None
-    page = ctx.new_page(); page.set_default_timeout(60000)
+    page = None
     try:
+        page = ctx.new_page(); page.set_default_timeout(60000)
         informe = crear_lote(page, nums)
         abrir_lote(page, informe)
         ejecutar_validacion(page)
@@ -311,14 +362,19 @@ def nuevo_lote(ctx, sb, en_curso):
                 "tope": time.time() + max(600, len(nums) * SEG_POR_CARAVANA)}
     except Exception as e:
         log.error("  No pude armar un lote (%s); esas %d caravanas quedan para más adelante", e, len(nums))
+        if page is not None and not re.search(r"crashed|closed|disconnected", str(e), re.I):
+            try:
+                if not logueado(page):
+                    log.warning("La sesión VISEC se cerró; vuelvo a entrar")
+                    login(page)
+            except Exception as e2:
+                log.warning("No pude volver a entrar a VISEC: %s", e2)
         try:
-            if not logueado(page):
-                log.warning("La sesión VISEC se cerró; vuelvo a entrar")
-                login(page)
-        except Exception as e2:
-            log.warning("No pude volver a entrar a VISEC: %s", e2)
-        page.close()
-        return {"page": None, "informe": None, "nums": nums, "fin": "error", "falla": True}
+            if page is not None:
+                page.close()
+        except Exception:
+            pass
+        return {"page": None, "informe": None, "nums": nums, "fin": "error", "falla": True, "error": str(e)}
 
 
 def cerrar_lote(sb, w):
@@ -364,17 +420,12 @@ def revisar(w):
             log.warning("  [%s] No pude recargar: %s", w["informe"], e)
     elif est == "finalizado":
         errores = renspas_con_error(page)
-        if errores and w["reintentos"] < REINTENTOS:
-            w["reintentos"] += 1; w["ultimo"] = ""
-            w["tope"] = time.time() + max(600, len(w["nums"]) * SEG_POR_CARAVANA)
-            log.warning("  [%s] VISEC no pudo leer ARCA para %s; vuelvo a ejecutar la validación (%d/%d)",
-                        w["informe"], ", ".join(sorted(errores)), w["reintentos"], REINTENTOS)
-            try:
-                ejecutar_validacion(page); time.sleep(5)
-            except Exception as e:
-                log.warning("  [%s] No pude reejecutar: %s", w["informe"], e); w["fin"] = "ok"; w["errores"] = errores
-        else:
-            w["fin"] = "ok"; w["errores"] = errores
+        if errores:
+            # Volver a "Ejecutar proceso de validación" en el mismo lote no sirve: VISEC contesta
+            # "Caravana validada anteriormente" y repite el resultado. Se marcan ERROR ARCA y se
+            # reconsultan en un lote nuevo otro día (hasta VISEC_REINTENTOS veces).
+            log.warning("  [%s] VISEC no pudo leer ARCA para %s", w["informe"], ", ".join(sorted(errores)))
+        w["fin"] = "ok"; w["errores"] = errores
     elif time.time() > w["tope"]:
         log.warning("  [%s] El lote no terminó en el tiempo previsto; leo lo que haya", w["informe"])
         w["fin"] = "timeout"; w["errores"] = set()
@@ -392,23 +443,37 @@ def main():
             sb.patch("visec_corridas", f"id=eq.{corrida}", {"estado": "sin_pendientes", "fin": datetime.now().astimezone().isoformat(), "cantidad": 0})
             log.info("No hay caravanas pendientes de consulta VISEC"); return
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=not VISIBLE)
-            ctx = browser.new_context(viewport={"width": 1400, "height": 900})
-            page = ctx.new_page(); page.set_default_timeout(60000)
-            login(page)
-            page.close()
+            def abrir_navegador():
+                b = p.chromium.launch(headless=not VISIBLE, args=["--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox", "--disable-extensions"])
+                c = b.new_context(viewport={"width": 1400, "height": 900})
+                pg = c.new_page(); pg.set_default_timeout(60000)
+                login(pg)
+                pg.close()
+                return b, c
+            browser, ctx = abrir_navegador()
             workers = []          # lotes abiertos (uno por pestaña)
             sin_pendientes = False
             while True:
                 hay_tiempo = MAX_MIN <= 0 or (time.time() - inicio) < MAX_MIN * 60
                 # llenar las pestañas libres con lotes nuevos (apenas se libera una, arranca otro lote)
-                while hay_tiempo and not sin_pendientes and len(workers) < PARALELO and fallas_seguidas < 3:
+                while hay_tiempo and not sin_pendientes and len(workers) < PARALELO and fallas_seguidas < 6:
                     en_curso = {n for w in workers for n in w["nums"]}
                     w = nuevo_lote(ctx, sb, en_curso)
                     if w is None:
                         sin_pendientes = True; break
                     if w.get("falla"):
-                        fallas_seguidas += 1; time.sleep(30); continue
+                        fallas_seguidas += 1
+                        if re.search(r"crashed|closed|disconnected", w.get("error", ""), re.I) and not workers:
+                            # se cayó el navegador: lo reabro entero (solo si no hay lotes en curso en otras pestañas)
+                            log.warning("El navegador se cayó (%s); lo reinicio", w["error"][:80])
+                            try:
+                                browser.close()
+                            except Exception:
+                                pass
+                            browser, ctx = abrir_navegador()
+                        else:
+                            time.sleep(30)
+                        continue
                     fallas_seguidas = 0
                     workers.append(w)
                 if not workers:
