@@ -81,7 +81,8 @@ h2{font-size:22px;margin:0 0 12px}h3{font-size:18px;margin:14px 0 8px}
     <div class="card">
       <h2>Usuario del portal (una sola vez)</h2>
       <p class="muted">Usuario "Operarios de manga" del portal Caravanas Pecuaria. Queda guardado en la tablet.</p>
-      <div class="grid" style="max-width:520px">
+      <div id="cfgUserOk" class="hidden"><div class="msg ok" id="cfgUserOkTxt"></div><button class="b" id="cfgCambiarUser">Cambiar usuario</button></div>
+      <div class="grid" style="max-width:520px" id="cfgUserForm">
         <label class="f">Email <input id="cfgEmail" type="email" autocomplete="off"></label>
         <label class="f">Contraseña <input id="cfgPass" type="password" autocomplete="off"></label>
         <button class="b azul" id="cfgProbar">Probar y guardar</button>
@@ -119,6 +120,7 @@ h2{font-size:22px;margin:0 0 12px}h3{font-size:18px;margin:14px 0 8px}
   <div class="top"><h1>Lector de Manga</h1><span class="sp"></span><span class="pill" id="homeConn">Balanza: —</span><button class="b" id="homeCfg" title="Configuración">⚙</button></div>
   <div class="body center">
     <button class="b p xl" id="btnIniciar">INICIAR TRABAJO DE MANGA</button>
+    <button class="b xl" id="btnSinConexion" style="font-size:22px;min-height:70px">Trabajar sin conexión (carga a mano)</button>
     <div class="muted" id="homeInfo"></div>
     <div id="homePend"></div>
     <div id="homeAbierta"></div>
@@ -186,8 +188,9 @@ h2{font-size:22px;margin:0 0 12px}h3{font-size:18px;margin:14px 0 8px}
 
 <!-- CARGA MANUAL -->
 <section id="s-manual" class="screen">
-  <div class="top"><h1>Ingresar a mano</h1><span class="sp"></span><button class="b" id="mnVolver">Volver</button></div>
+  <div class="top"><h1 id="mnTitulo">Ingresar a mano</h1><span class="sp"></span><div class="cnt"><span class="t" id="mT">0</span><span class="v" id="mV">0</span><span class="a" id="mA">0</span><span class="r" id="mR">0</span></div><button class="b" id="mnVolver">Volver</button></div>
   <div class="body">
+    <div id="mnBanner" class="hidden" style="border-radius:12px;padding:14px;color:#fff;text-align:center;margin-bottom:12px"><div class="num" id="mnBNum" style="font-family:ui-monospace,Consolas,monospace;font-size:30px;font-weight:700"></div><div id="mnBBig" style="font-size:40px;font-weight:800;line-height:1.1"></div><div id="mnBDet" style="font-size:18px;margin-top:4px"></div><div id="mnBMot" style="font-size:22px;font-weight:700;margin-top:6px"></div></div>
     <p class="muted" style="text-align:center">Tipeá por lo menos los últimos 6 dígitos de la caravana (o el número completo).</p>
     <div class="disp" id="mnDisp">&nbsp;</div>
     <div class="pad">
@@ -197,6 +200,10 @@ h2{font-size:22px;margin:0 0 12px}h3{font-size:18px;margin:14px 0 8px}
       <button class="b" data-k="C">⌫</button><button class="b" data-k="0">0</button><button class="b p" data-k="OK">OK</button>
     </div>
     <div id="mnRes" style="margin-top:16px"></div>
+  </div>
+  <div class="bottom hidden" id="mnBottom">
+    <button class="b" id="mnLista">Ver listado</button>
+    <button class="b d" id="mnCerrar">Cerrar sesión</button>
   </div>
 </section>
 

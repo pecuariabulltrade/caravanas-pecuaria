@@ -146,7 +146,7 @@ function procesar(numero, fuente) {
   else A.beep('verde');
 }
 function mostrarLectura(l) {
-  const s = $('s-read'); s.className = 'screen on c-' + l.color;
+  const s = $('s-read'); s.classList.remove('c-verde', 'c-amarillo', 'c-rojo'); s.classList.add('c-' + l.color);
   $('rdEsperando').classList.add('hidden'); $('rdBox').classList.remove('hidden');
   $('rdNum').textContent = l.caravana;
   $('rdBig').textContent = l.color === 'verde' ? 'OK' : l.color === 'amarillo' ? 'REVISAR' : 'NO';
@@ -163,12 +163,14 @@ function mostrarLectura(l) {
 function pintarContadores() {
   const c = sesion ? contar(sesion) : { total: 0, verdes: 0, amarillas: 0, rojas: 0 };
   $('cT').textContent = c.total; $('cV').textContent = c.verdes; $('cA').textContent = c.amarillas; $('cR').textContent = c.rojas;
+  $('mT').textContent = c.total; $('mV').textContent = c.verdes; $('mA').textContent = c.amarillas; $('mR').textContent = c.rojas;
   if (sesion) $('rdSes').textContent = `${sesion.destino === 'EXPORTACION' ? 'Exportación' : 'Consumo'} · ${sesion.categoria} · ${sesion.propietario}`;
 }
 function abrirLectura() {
+  if (sesion && sesion.modo === 'manual') return abrirManual();
   show('read'); pintarContadores(); pintarConn();
   const ult = sesion.lecturas.filter(l => !l.borrada).slice(-1)[0];
-  if (ult) mostrarLectura(ult); else { $('s-read').className = 'screen on'; $('rdEsperando').classList.remove('hidden'); $('rdBox').classList.add('hidden'); }
+  if (ult) mostrarLectura(ult); else { $('s-read').classList.remove('c-verde', 'c-amarillo', 'c-rojo'); $('rdEsperando').classList.remove('hidden'); $('rdBox').classList.add('hidden'); }
 }
 
 // ---------- conexión con la balanza ----------
@@ -211,12 +213,13 @@ function irHome() {
   if (pendientes.length) $('homeEnviar').onclick = async () => { try { const r = await enviarPendientes(); toast(r.ok ? `Enviadas ${r.ok}` : ('No se pudo enviar: ' + (r.err && r.err.message))); } catch (e) { toast(e.message); } irHome(); };
   $('homeAbierta').innerHTML = sesion ? `<div class="msg warn">Hay una sesión abierta (${esc(sesion.destino)} · ${esc(sesion.categoria)} · ${esc(sesion.propietario)}, ${contar(sesion).total} lecturas). <button class="b" id="homeSeguir">Continuar</button> <button class="b" id="homeDescartar">Descartar</button></div>` : '';
   if (sesion) {
-    $('homeSeguir').onclick = () => { conectarBalanza(); abrirLectura(); };
+    $('homeSeguir').onclick = () => { if (sesion.modo !== 'manual') conectarBalanza(); abrirLectura(); };
     $('homeDescartar').onclick = () => confirmar('<h2>¿Descartar la sesión abierta?</h2><p>Se pierden sus lecturas; no se envía al portal.</p>', () => { sesion = null; guardarSesion(); irHome(); }, 'Descartar');
   }
   pintarConn();
 }
-$('btnIniciar').onclick = () => { if (!cfg.email) { show('setup'); pintarSetup(); return; } chequeo(); };
+$('btnIniciar').onclick = () => { if (!cfg.email) { show('setup'); pintarSetup(); return; } sinBalanza = false; chequeo(); };
+$('btnSinConexion').onclick = () => { if (!cfg.email) { show('setup'); pintarSetup(); return; } sinBalanza = true; chequeo(); };
 $('homeCfg').onclick = () => { show('setup'); pintarSetup(); };
 
 // --- chequeo ---
@@ -225,11 +228,14 @@ async function chequeo() {
   show('check'); $('ckContinuar').disabled = true; $('ckContinuar').textContent = 'Continuar';
   [1, 2, 3, 4].forEach(i => ck(i, '', ''));
   // 1. balanza
-  ck(1, 'run', 'Conectando…');
   let bal = false;
-  if (conn.connected) bal = true;
-  else if (conectarBalanza()) bal = await esperarConexion(CFG.ESPERA_BALANZA_MS);
-  ck(1, bal ? 'ok' : 'bad', bal ? `Conectada por ${conn.via === 'usb' ? 'cable USB' : 'Bluetooth'} (${conn.device})` : (conn.error || 'No se pudo conectar. Revisá que la balanza esté encendida y emparejada.'));
+  if (sinBalanza) ck(1, 'ok', 'Sin balanza: las caravanas se cargan a mano');
+  else {
+    ck(1, 'run', 'Conectando…');
+    if (conn.connected) bal = true;
+    else if (conectarBalanza()) bal = await esperarConexion(CFG.ESPERA_BALANZA_MS);
+    ck(1, bal ? 'ok' : 'bad', bal ? `Conectada por ${conn.via === 'usb' ? 'cable USB' : 'Bluetooth'} (${conn.device})` : (conn.error || 'No se pudo conectar. Revisá que la balanza esté encendida y emparejada.'));
+  }
   // 2. internet
   ck(2, 'run', 'Comprobando…');
   let online = false; try { online = !!A.online(); } catch (e) { online = navigator.onLine; }
@@ -247,7 +253,7 @@ async function chequeo() {
   else if (!online) ck(4, 'warn', `${pendientes.length} pendiente(s); se envían cuando haya internet`);
   else { ck(4, 'run', 'Enviando…'); const r = await enviarPendientes(); ck(4, r.quedan ? 'warn' : 'ok', r.quedan ? `Quedan ${r.quedan} sin enviar: ${r.err && r.err.message}` : `Enviadas ${r.ok}`); }
   $('ckContinuar').disabled = !padOk;
-  $('ckContinuar').textContent = bal ? 'Continuar' : 'Seguir solo con carga manual';
+  $('ckContinuar').textContent = sinBalanza ? 'Continuar (carga a mano)' : bal ? 'Continuar' : 'Seguir solo con carga manual';
 }
 $('ckReintentar').onclick = chequeo;
 $('ckVolver').onclick = irHome;
@@ -255,6 +261,7 @@ $('ckContinuar').onclick = () => pintarSelect();
 
 // --- selección ---
 let sel = { destino: '', categoria: '', propietario: '', propietario_id: null };
+let sinBalanza = false;   // sesión 'Trabajar sin conexión': todo a mano
 function pintarSelect() {
   sel = { destino: '', categoria: '', propietario: '', propietario_id: null };
   $('selProp').innerHTML = (padron.props || []).map(p => `<button class="b" data-v="${esc(p.nombre)}" data-id="${p.id}">${esc(p.nombre)}</button>`).join('');
@@ -271,19 +278,42 @@ function elegir(grupo, e) {
 ['selDestino', 'selCat', 'selProp'].forEach(g => $(g).onclick = e => elegir(g, e));
 $('selVolver').onclick = irHome;
 $('selEmpezar').onclick = () => {
-  sesion = { id: uuid(), inicio: new Date().toISOString(), fin: null, destino: sel.destino, categoria: sel.categoria, propietario: sel.propietario, propietario_id: sel.propietario_id, padron_al: padron.al, lecturas: [] };
+  sesion = { id: uuid(), inicio: new Date().toISOString(), fin: null, destino: sel.destino, categoria: sel.categoria, propietario: sel.propietario, propietario_id: sel.propietario_id, padron_al: padron.al, modo: sinBalanza ? 'manual' : 'balanza', lecturas: [] };
   guardarSesion(); ultima = { num: '', t: 0 };
   abrirLectura();
 };
 
 // --- lectura ---
-$('rdManual').onclick = () => { mn = ''; pintarManual(); $('mnRes').innerHTML = ''; show('manual'); };
+$('rdManual').onclick = abrirManual;
 $('rdLista').onclick = () => { lsF = ''; pintarLista(); show('list'); };
 $('rdCerrar').onclick = () => { pintarCierre(); show('close'); };
 
 // --- manual ---
 let mn = '';
 function pintarManual() { $('mnDisp').innerHTML = mn ? esc(mn) : '&nbsp;'; }
+const COLOR_FONDO = { verde: 'var(--verde)', amarillo: 'var(--amarillo)', rojo: 'var(--rojo)' };
+function pintarBanner(l) {
+  const b = $('mnBanner');
+  if (!l) { b.classList.add('hidden'); return; }
+  b.classList.remove('hidden'); b.style.background = COLOR_FONDO[l.color];
+  $('mnBNum').textContent = l.caravana;
+  $('mnBBig').textContent = l.color === 'verde' ? 'OK' : l.color === 'amarillo' ? 'REVISAR' : 'NO';
+  const det = []; if (l.propietario) det.push(l.propietario); if (l.categoria) det.push(l.categoria); if (l.dias != null) det.push(l.dias + ' días en SENASA'); if (l.estado && l.estado !== 'activa') det.push('estado: ' + l.estado);
+  $('mnBDet').textContent = det.join(' · '); $('mnBMot').textContent = l.motivos.join(' — ');
+}
+function abrirManual() {
+  const manual = sesion && sesion.modo === 'manual';
+  mn = ''; pintarManual(); $('mnRes').innerHTML = ''; pintarContadores();
+  $('mnTitulo').textContent = manual ? `Sin conexión · ${sesion.destino === 'EXPORTACION' ? 'Exportación' : 'Consumo'} · ${sesion.categoria} · ${sesion.propietario}` : 'Ingresar a mano';
+  $('mnVolver').classList.toggle('hidden', manual); $('mnBottom').classList.toggle('hidden', !manual);
+  pintarBanner(manual ? sesion.lecturas.filter(l => !l.borrada).slice(-1)[0] : null);
+  show('manual');
+}
+function despuesDeManual(numero) {
+  procesar(numero, 'manual'); mn = '';
+  if (sesion.modo === 'manual') { pintarManual(); $('mnRes').innerHTML = ''; pintarContadores(); pintarBanner(sesion.lecturas.slice(-1)[0]); }
+  else abrirLectura();
+}
 document.querySelector('.pad').onclick = e => {
   const b = e.target.closest('button'); if (!b) return; const k = b.dataset.k;
   if (k === 'C') mn = mn.slice(0, -1);
@@ -294,19 +324,21 @@ document.querySelector('.pad').onclick = e => {
 function buscarYProcesar() {
   if (mn.length < 6) return toast('Tipeá por lo menos 6 dígitos');
   const r = buscarManual(mn);
-  if (r.length === 1) { procesar(r[0], 'manual'); mn = ''; abrirLectura(); return; }
+  if (r.length === 1) return despuesDeManual(r[0]);
   if (!r.length) {
     // no está en el padrón: se registra igual (rojo) si tiene 15 dígitos; si no, aviso
-    if (mn.length === 15) { procesar(mn, 'manual'); mn = ''; abrirLectura(); return; }
+    if (mn.length === 15) return despuesDeManual(mn);
     $('mnRes').innerHTML = `<div class="msg err">Ninguna caravana del padrón termina en ${esc(mn)}. Si tenés el número completo (15 dígitos), tipealo para registrarla igual.</div>`; return;
   }
   const propSes = sesion.propietario;
   r.sort((a, b) => ((fila(b).propietario === propSes) - (fila(a).propietario === propSes)) || a.localeCompare(b));
   $('mnRes').innerHTML = `<div class="msg warn">${r.length} caravanas terminan en ${esc(mn)}. Tocá la correcta:</div><div class="lista">` +
     r.slice(0, 30).map(n => { const f = fila(n); return `<button class="b it" data-n="${n}" style="width:100%;justify-content:flex-start;text-align:left"><span class="n">${n}</span><span class="d">${esc(f.propietario)} · ${esc(f.categoria)} · ${esc(f.estado)}</span></button>`; }).join('') + '</div>';
-  $('mnRes').onclick = e => { const b = e.target.closest('button[data-n]'); if (!b) return; procesar(b.dataset.n, 'manual'); mn = ''; abrirLectura(); };
+  $('mnRes').onclick = e => { const b = e.target.closest('button[data-n]'); if (!b) return; despuesDeManual(b.dataset.n); };
 }
-$('mnVolver').onclick = abrirLectura;
+$('mnVolver').onclick = () => { show('read'); pintarContadores(); pintarConn(); };
+$('mnLista').onclick = () => { lsF = ''; pintarLista(); show('list'); };
+$('mnCerrar').onclick = () => { pintarCierre(); show('close'); };
 
 // --- listado ---
 let lsF = '';
@@ -346,8 +378,12 @@ async function cerrarSesion() {
 }
 
 // --- configuración ---
+let editarUsuario = false;
 function pintarSetup() {
-  $('cfgEmail').value = cfg.email || ''; $('cfgPass').value = cfg.password || '';
+  const guardado = !!(cfg.email && cfg.password) && !editarUsuario;
+  $('cfgUserOk').classList.toggle('hidden', !guardado); $('cfgUserForm').classList.toggle('hidden', guardado);
+  $('cfgUserOkTxt').textContent = 'Usuario guardado: ' + (cfg.email || '');
+  $('cfgEmail').value = guardado ? '' : (cfg.email || ''); $('cfgPass').value = '';
   $('cfgModo').value = cfg.modo || 'bluetooth'; $('cfgBaud').value = String(cfg.baud || 9600);
   $('cfgMsg').innerHTML = ''; $('cfgBalMsg').innerHTML = '';
   pintarModo(); pintarBt();
@@ -372,9 +408,10 @@ $('cfgModo').addEventListener('change', () => { cfg.modo = $('cfgModo').value; s
 $('cfgProbar').onclick = async () => {
   cfg.email = $('cfgEmail').value.trim(); cfg.password = $('cfgPass').value; token = null;
   msg('cfgMsg', 'warn', 'Probando…');
-  try { await login(); store.set('cfg', cfg); msg('cfgMsg', 'ok', 'Usuario correcto. Quedó guardado en la tablet.'); }
+  try { await login(); store.set('cfg', cfg); editarUsuario = false; pintarSetup(); toast('Usuario correcto. Quedó guardado en la tablet.', 3000); }
   catch (e) { msg('cfgMsg', 'err', 'No se pudo ingresar: ' + e.message); }
 };
+$('cfgCambiarUser').onclick = () => { editarUsuario = true; pintarSetup(); };
 $('cfgProbarBalanza').onclick = async () => {
   cfg.modo = $('cfgModo').value; store.set('cfg', cfg);
   msg('cfgBalMsg', 'warn', 'Conectando…');

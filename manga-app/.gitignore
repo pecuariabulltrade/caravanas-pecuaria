@@ -1,6 +1,7 @@
 build/
 .gradle/
 keystore/
+firma_apk/
 local.properties
 *.iml
 .idea/

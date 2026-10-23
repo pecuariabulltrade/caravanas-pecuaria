@@ -59,7 +59,10 @@ let fallos = 0; const ok = (c, m) => { if (!c) { fallos++; console.log('FALLA:',
   await page.fill('#cfgEmail', 'manga@pecuariabulltrade.com'); await page.fill('#cfgPass', 'mala');
   await page.click('#cfgProbar'); await page.waitForSelector('#cfgMsg .msg.err');
   ok(true, 'contraseña incorrecta avisa');
-  await page.fill('#cfgPass', 'secreta'); await page.click('#cfgProbar'); await page.waitForSelector('#cfgMsg .msg.ok');
+  await page.fill('#cfgPass', 'secreta'); await page.click('#cfgProbar'); await page.waitForSelector('#cfgUserOk:not(.hidden)');
+  ok(!(await page.isVisible('#cfgEmail')) && (await page.textContent('#cfgUserOkTxt')).includes('manga@'), 'usuario guardado queda oculto');
+  await page.click('#cfgCambiarUser'); ok(await page.isVisible('#cfgEmail') && (await page.inputValue('#cfgPass')) === '', 'Cambiar usuario muestra el formulario sin contraseña');
+  await page.fill('#cfgEmail', 'manga@pecuariabulltrade.com'); await page.fill('#cfgPass', 'secreta'); await page.click('#cfgProbar'); await page.waitForSelector('#cfgUserOk:not(.hidden)');
   await page.selectOption('#cfgBt', 'AA:BB');
   await page.click('#setupVolver');
   ok(await page.isVisible('#s-home'), 'vuelve a inicio');
@@ -170,6 +173,26 @@ let fallos = 0; const ok = (c, m) => { if (!c) { fallos++; console.log('FALLA:',
   await page.click('#homeEnviar'); await page.waitForTimeout(500);
   ok(rpcBody && rpcBody.p_sesion.destino === 'CONSUMO' && !(await page.textContent('#homePend')).includes('pendiente'), 'reenvío manual de pendientes');
 
+  // modo sin conexión (todo a mano)
+  await page.click('#btnSinConexion');
+  await page.waitForFunction(() => !document.getElementById('ckContinuar').disabled, null, { timeout: 20000 });
+  ok((await page.textContent('#ck1t')).includes('a mano') && (await page.textContent('#ckContinuar')).includes('a mano'), 'chequeo sin balanza');
+  await page.click('#ckContinuar');
+  await page.click('#selDestino [data-v=CONSUMO]'); await page.click('#selCat [data-v=VACA]'); await page.click('#selProp [data-v=PEGSA]'); await page.click('#selEmpezar');
+  ok(await page.isVisible('#s-manual') && await page.isVisible('#mnBottom') && !(await page.isVisible('#mnVolver')), 'sesión sin conexión abre el teclado con botones de sesión');
+  for (const k of '000001') await page.click(`.pad [data-k="${k}"]`);
+  await page.click('.pad [data-k=OK]');
+  await page.click('#mnRes button[data-n="032000000000001"]');
+  ok(await page.isVisible('#s-manual') && (await page.textContent('#mnBBig')) === 'OK' && (await page.textContent('#mT')) === '1', 'queda en el teclado con banner verde y contador 1');
+  for (const k of '000002') await page.click(`.pad [data-k="${k}"]`);
+  await page.click('.pad [data-k=OK]');
+  ok((await page.textContent('#mnBBig')) === 'NO' && (await page.textContent('#mnBMot')).includes('BULLTRADE') && (await page.textContent('#mR')) === '1', 'banner rojo con motivo');
+  await page.click('#mnLista'); ok(await page.isVisible('#s-list') && (await page.evaluate(() => document.querySelectorAll('#lsBox .it').length)) === 2, 'listado desde modo manual');
+  await page.click('#lsVolver'); ok(await page.isVisible('#s-manual'), 'volver del listado regresa al teclado');
+  await page.reload(); await page.click('#homeSeguir'); ok(await page.isVisible('#s-manual') && (await page.textContent('#mT')) === '2', 'continuar sesión manual tras reinicio');
+  await page.click('#mnCerrar'); await page.click('#clConfirmar'); await page.click('#modalBox button[data-i="1"]');
+  await page.waitForSelector('#clMsg .msg.ok', { timeout: 5000 });
+  ok(rpcBody && rpcBody.p_sesion.destino === 'CONSUMO' && rpcBody.p_lecturas.length === 2 && rpcBody.p_lecturas.every(l => l.fuente === 'manual'), 'sesión manual enviada con lecturas a mano');
   await page.screenshot({ path: path.join(__dirname, 'captura_home.png') });
   await browser.close(); server.close();
   console.log(fallos ? `${fallos} fallas` : 'Todas las pruebas de interfaz pasaron');
