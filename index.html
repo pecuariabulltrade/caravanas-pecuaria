@@ -77,7 +77,6 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
   <button data-t="clasif">Clasificar</button>
   <button data-t="altasbajas">Altas y bajas</button>
   <button data-t="movs">Movimientos</button>
-  <button data-t="sesiones">Sesiones <span class="n" id="nSes"></span></button>
   <button data-t="config">Configuración</button>
 </nav>
 <main id="main">
@@ -147,6 +146,7 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
       <label class="f">Motivo <select id="eMot"><option value="">Todos</option><option value="venta">Venta</option><option value="muerte">Muerte</option></select></label>
       <label class="f">Situación <select id="eSit"><option value="pendiente_dte">Pendiente de DTE</option><option value="sin_alta">Salió sin alta</option><option value="dada_de_baja">Ya dada de baja</option><option value="">Todas</option></select></label>
       <button class="b" id="eBuscar">Buscar</button>
+      <button class="b" id="eExcel">Exportar Excel</button>
       <span class="muted" id="eInfo"></span>
     </div>
     <div class="row" style="margin-top:8px">
@@ -363,24 +363,6 @@ h2{font-size:18px;margin:4px 0 12px}h3{font-size:15px;margin:10px 0 8px}
   <div class="tw"><table id="mTabla"></table></div>
 </section>
 
-<!-- SESIONES DE MANGA -->
-<section id="t-sesiones" class="tab hidden">
-  <div class="card"><div class="row">
-    <label class="f">Desde <input type="date" id="sgDesde"></label>
-    <label class="f">Hasta <input type="date" id="sgHasta"></label>
-    <label class="f">Destino <select id="sgDest"><option value="">Todos</option><option value="EXPORTACION">Exportación</option><option value="CONSUMO">Consumo</option></select></label>
-    <label class="f">Categoría <select id="sgCat"><option value="">Todas</option><option>HEMBRA</option><option>VACA</option><option>MACHO</option></select></label>
-    <label class="f">Propietario <select id="sgProp"><option value="">Todos</option></select></label>
-    <label class="f">Caravana <input id="sgCar" class="mono" placeholder="busca en las lecturas"></label>
-    <button class="b" id="sgBuscar">Buscar</button>
-    <button class="b" id="sgExcel">Exportar Excel</button>
-    <span class="muted" id="sgInfo"></span>
-  </div>
-  <p class="muted">Sesiones armadas en la manga con la tablet y la balanza XR5000. Cada sesión controla las caravanas leídas contra el padrón SENASA: verde = coincide; amarillo = revisar (hembra/vaca, toro, repetida); rojo = no coincide (otro propietario, otra categoría, sin 90 días para exportación, baja o fuera del padrón).</p>
-  </div>
-  <div class="tw"><table id="sgTabla"></table></div>
-</section>
-
 <!-- CONFIG -->
 <section id="t-config" class="tab hidden">
   <div class="card">
@@ -448,7 +430,7 @@ const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>'
 const tag = s => `<span class="tag ${esc(s)}">${esc(SIT[s]||s)}</span>`;
 const SIT = {pendiente:'Pendiente de alta',en_padron:'Ya en el padrón',en_padron_salida:'En el padrón, con salida',revisar:'Revisar: reingresó después de salir',pendiente_dte:'Pendiente de DTE',dada_de_baja:'Dada de baja',sin_alta:'Salió sin alta',sin_stock:'En el padrón, no está en el stock',virgen:'Virgen',activa:'Activa',salida:'Salida',baja:'Baja',anulada:'Anulada',ok:'OK',error:'Error',corriendo:'Corriendo'};
 let USER = null, PROPS = [], TURNO = null;
-const state = { ses:{rows:[],det:{}}, ing:{rows:[],sel:new Set()}, egr:{rows:[],sel:new Set()}, con:{rows:[],all:[],bolsas:null,sel:new Set()}, stk:{rows:[],sel:new Set(),todo:null,sinStock:null}, movs:[], altaPrev:null, bajaPrev:null };
+const state = { ing:{rows:[],sel:new Set()}, egr:{rows:[],sel:new Set()}, con:{rows:[],all:[],bolsas:null,sel:new Set()}, stk:{rows:[],sel:new Set(),todo:null,sinStock:null}, movs:[], altaPrev:null, bajaPrev:null };
 
 function toast(m, ms=2500){ const t=$('toast'); t.textContent=m; t.style.display='block'; setTimeout(()=>t.style.display='none',ms); }
 function msg(el, kind, text){ $(el).innerHTML = `<div class="msg ${kind}">${esc(text)}</div>`; }
@@ -493,10 +475,10 @@ async function iniciar(){
   fechasDDMM(document);
   $('login').classList.add('hidden'); $('pUser').textContent = USER;
   const {data} = await sb.from('propietarios').select('*').order('orden'); PROPS = data||[];
-  ['eProp','cProp','mProp','sProp','abProp','sgProp'].forEach(s=>llenarProps(s,true)); ['aProp'].forEach(s=>llenarProps(s,false));
+  ['eProp','cProp','mProp','sProp','abProp'].forEach(s=>llenarProps(s,true)); ['aProp'].forEach(s=>llenarProps(s,false));
   ['aFecha','bFecha','kFecha'].forEach(i=>$(i).value=hoy());
-  $('iDesde').value=diasAtras(60); $('iHasta').value=hoy(); $('eDesde').value=diasAtras(120); $('eHasta').value=hoy(); $('mDesde').value=diasAtras(30); $('mHasta').value=hoy(); $('abDesde').value=diasAtras(180); $('abHasta').value=hoy(); $('sgDesde').value=diasAtras(90); $('sgHasta').value=hoy();
-  await Promise.all([refrescarTurno(), refrescarSync(), contarPendientes(), contarSesionesHoy()]);
+  $('iDesde').value=diasAtras(60); $('iHasta').value=hoy(); $('eDesde').value=diasAtras(120); $('eHasta').value=hoy(); $('mDesde').value=diasAtras(30); $('mHasta').value=hoy(); $('abDesde').value=diasAtras(180); $('abHasta').value=hoy();
+  await Promise.all([refrescarTurno(), refrescarSync(), contarPendientes()]);
   mostrarTab('inicio');
   setInterval(()=>{ refrescarSync(); if(TURNO?.usuario===USER && Date.now()-ULTIMA_ACTIVIDAD < 3*60000) tomarTurno(); else refrescarTurno(); }, 60000);
 }
@@ -553,7 +535,7 @@ function mostrarTab(t){
   document.querySelectorAll('.tab').forEach(s=>s.classList.toggle('hidden', s.id!=='t-'+t));
   $('side').classList.remove('on');
   if(TABS_CARGA.has(t) && turnoLibre()) tomarTurno();
-  ({inicio:cargarInicio, ingresos:cargarIngresos, egresos:cargarEgresos, stock:cargarStock, consulta:cargarConsulta, movs:cargarMovs, sesiones:cargarSesiones, altasbajas:cargarAltasBajas, config:cargarConfig, altam:cargarCompras, clasif:cargarClasif})[t]?.();
+  ({inicio:cargarInicio, ingresos:cargarIngresos, egresos:cargarEgresos, stock:cargarStock, consulta:cargarConsulta, movs:cargarMovs, altasbajas:cargarAltasBajas, config:cargarConfig, altam:cargarCompras, clasif:cargarClasif})[t]?.();
 }
 $('nav').onclick = e=>{ const b=e.target.closest('button'); if(b) mostrarTab(b.dataset.t); };
 
@@ -766,6 +748,10 @@ $('eTabla').onchange = e=>{ const c=e.target;
   else if(c.dataset.g!==undefined){ state.egr.rows.filter(r=>`${r.nro_tropa||'—'}||${r.propietario||'—'}`===c.dataset.g&&r.situacion==='pendiente_dte').forEach(r=>c.checked?state.egr.sel.add(r.caravana):state.egr.sel.delete(r.caravana)); pintarEgresos(); }
   contarSel('egr','eCount','eBaja'); };
 $('eBuscar').onclick=cargarEgresos;
+$('eExcel').onclick=()=>{ const rows=state.egr.rows; if(!rows.length) return toast('No hay filas para exportar (buscá primero)');
+  const sel=state.egr.sel.size?rows.filter(r=>state.egr.sel.has(r.caravana)):rows;
+  exportXlsx(`egresos_${hoy()}.xlsx`,{Egresos:sel.map(r=>({Caravana:r.caravana,Situación:SIT[r.situacion]||r.situacion,'Propietario alta':r.propietario||'','Cat. padrón':r.categoria_padron||'','Cat. WinCampo':r.categoria_wincampo||'','Fecha alta':fmtF(r.fecha_alta),'Días desde alta':diasDesde(r.fecha_alta)>=0?diasDesde(r.fecha_alta):'','90 días':diasDesde(r.fecha_alta)>=90?'SI':'NO','DTE alta':r.dte_alta||'',Tropa:r.nro_tropa||'','Fecha salida':fmtF(r.fecha_salida),Motivo:r.motivo_salida||'','Destino WinCampo':r.destino_salida||'','Fecha baja':fmtF(r.fecha_baja),'DTE baja':r.dte_baja||'','Destino baja':r.destino_baja||''}))});
+  toast(`${sel.length} filas exportadas${state.egr.sel.size?' (solo las seleccionadas)':''}`); };
 $('eCopiar').onclick=async ()=>{ if(!state.egr.sel.size) return toast('No hay caravanas seleccionadas'); const txt=[...state.egr.sel].join('\n'); try{ await navigator.clipboard.writeText(txt); toast(`${state.egr.sel.size} caravanas copiadas`); }catch(e){ prompt('Copiá las caravanas:', txt.replace(/\n/g,' ')); } }; $('eSelRango').onclick=()=>{selRango(state.egr,'eRd','eRh','caravana',r=>r.situacion==='pendiente_dte');pintarEgresos();};
 $('eSelTodo').onclick=()=>{state.egr.rows.filter(r=>r.situacion==='pendiente_dte').forEach(r=>state.egr.sel.add(r.caravana));pintarEgresos();}; $('eSelNada').onclick=()=>{state.egr.sel.clear();pintarEgresos();};
 $('eBaja').onclick=()=>{
@@ -1132,52 +1118,6 @@ $('mCopiar').onclick=async ()=>{ const nums=[...new Set(state.movs.map(x=>x.cara
   const txt=nums.join('\n'); try{ await navigator.clipboard.writeText(txt); toast(`${nums.length} caravanas copiadas al portapapeles`); }catch(e){ prompt('Copiá las caravanas:', txt.replace(/\n/g,' ')); } };
 $('mDdjj').onclick=()=>{ const dte=$('mDte').value.trim(); if(!dte) return toast('Filtrá primero por un DTE'); ddjjPorDte(dte); };
 $('mExcel').onclick=()=>exportXlsx(`movimientos_${hoy()}.xlsx`,{Movimientos:state.movs.map(({propietarios,...r})=>r)});
-
-// ---------- SESIONES DE MANGA ----------
-const SES_COLOR={verde:'#1b8f3a',amarillo:'#e6a800',rojo:'#c62828'};
-async function cargarSesiones(){
-  const st=state.ses; st.det={};
-  let q=sb.from('v_sesiones_manga').select('*').gte('inicio',$('sgDesde').value+'T00:00:00').lte('inicio',$('sgHasta').value+'T23:59:59').order('inicio',{ascending:false});
-  if($('sgDest').value) q=q.eq('destino',$('sgDest').value); if($('sgCat').value) q=q.eq('categoria',$('sgCat').value); if($('sgProp').value) q=q.eq('propietario_id',+$('sgProp').value);
-  try{
-    st.rows=await all(q);
-    const car=$('sgCar').value.trim().toUpperCase();
-    if(car){ const {data,error}=await sb.from('sesiones_manga_lecturas').select('sesion_id').ilike('caravana',`%${car}%`); if(error) throw new Error(error.message); const ids=new Set((data||[]).map(x=>x.sesion_id)); st.rows=st.rows.filter(s=>ids.has(s.id)); }
-  }catch(e){ return toast(e.message); }
-  pintarSesiones();
-}
-function pintarSesiones(){
-  const st=state.ses, rows=st.rows;
-  let h=`<tr><th></th><th>Inicio</th><th>Fin</th><th>Destino</th><th>Categoría</th><th>Propietario</th><th>Total</th><th style="color:${SES_COLOR.verde}">Verdes</th><th style="color:${SES_COLOR.amarillo}">Amarillas</th><th style="color:${SES_COLOR.rojo}">Rojas</th><th>Borradas</th><th>A mano</th><th>Usuario</th><th>Tablet</th><th>Padrón al</th><th>Recibida</th></tr>`;
-  rows.forEach(s=>{
-    h+=`<tr class="tropa-h" data-ses="${s.id}" style="cursor:pointer"><td>${st.det[s.id]?'▾':'▸'}</td><td>${fmtTs(s.inicio)}</td><td>${fmtTs(s.fin)}</td><td>${s.destino==='EXPORTACION'?'Exportación':'Consumo'}</td><td>${esc(s.categoria)}</td><td>${esc(s.propietario)}</td><td><b>${s.total}</b></td><td style="color:${SES_COLOR.verde}"><b>${s.verdes}</b></td><td style="color:${SES_COLOR.amarillo}"><b>${s.amarillas}</b></td><td style="color:${SES_COLOR.rojo}"><b>${s.rojas}</b></td><td class="muted">${s.borradas}</td><td class="muted">${s.manuales}</td><td class="muted">${esc(s.usuario||'')}</td><td class="muted">${esc(s.tablet||'')}</td><td class="muted">${fmtTs(s.padron_al)}</td><td class="muted">${fmtTs(s.recibido_en)}</td></tr>`;
-    const det=st.det[s.id];
-    if(det){
-      if(!det.length) h+=`<tr><td></td><td colspan="15" class="muted">Sin lecturas</td></tr>`;
-      det.forEach(l=>{ h+=`<tr style="${l.borrada?'color:var(--grey);text-decoration:line-through':''}"><td></td><td colspan="2">${fmtTs(l.hora)}</td><td colspan="2"><span class="sem" style="background:${SES_COLOR[l.color]}"></span>${l.color}${l.borrada?' (borrada)':''}</td><td class="mono">${esc(l.caravana)}</td><td colspan="2">${esc(l.propietario||'')} · ${esc(l.categoria||'')}</td><td colspan="2">${l.dias!=null?l.dias+' d':''} ${l.estado&&l.estado!=='activa'?'· '+esc(l.estado):''}</td><td>${l.fuente==='manual'?'a mano':'bastón'}</td><td colspan="5">${esc((l.motivos||[]).join(' — '))}</td></tr>`; });
-    }
-  });
-  $('sgTabla').innerHTML=h;
-  $('sgInfo').textContent=`${rows.length} sesiones · ${rows.reduce((a,s)=>a+s.total,0)} lecturas · ${rows.reduce((a,s)=>a+s.rojas,0)} rojas`;
-}
-$('sgTabla').onclick=async e=>{
-  const tr=e.target.closest('tr[data-ses]'); if(!tr) return; const id=tr.dataset.ses, st=state.ses;
-  if(st.det[id]){ delete st.det[id]; return pintarSesiones(); }
-  const {data,error}=await sb.from('sesiones_manga_lecturas').select('*').eq('sesion_id',id).order('orden'); if(error) return toast(error.message);
-  st.det[id]=data||[]; pintarSesiones();
-};
-$('sgBuscar').onclick=cargarSesiones;
-$('sgExcel').onclick=async ()=>{
-  const st=state.ses; if(!st.rows.length) return toast('No hay sesiones en el listado');
-  const ids=st.rows.map(s=>s.id); let lect=[];
-  try{ lect=await all(sb.from('sesiones_manga_lecturas').select('*').in('sesion_id',ids).order('sesion_id').order('orden')); }catch(e){ return toast(e.message); }
-  const cab=Object.fromEntries(st.rows.map(s=>[s.id,s]));
-  exportXlsx(`sesiones_manga_${hoy()}.xlsx`,{
-    Sesiones: st.rows.map(s=>({Inicio:fmtTs(s.inicio),Fin:fmtTs(s.fin),Destino:s.destino,Categoría:s.categoria,Propietario:s.propietario,Total:s.total,Verdes:s.verdes,Amarillas:s.amarillas,Rojas:s.rojas,Borradas:s.borradas,'A mano':s.manuales,Usuario:s.usuario||'',Tablet:s.tablet||'','Padrón al':fmtTs(s.padron_al),Recibida:fmtTs(s.recibido_en),Id:s.id})),
-    Lecturas: lect.map(l=>{ const s=cab[l.sesion_id]||{}; return {Sesión:fmtTs(s.inicio),Destino:s.destino||'',Categoría_sesión:s.categoria||'',Propietario_sesión:s.propietario||'',Orden:l.orden,Caravana:l.caravana,Hora:fmtTs(l.hora),Color:l.color,Motivos:(l.motivos||[]).join(' — '),Fuente:l.fuente,Propietario:l.propietario||'',Categoría:l.categoria||'',Estado:l.estado||'',Días:l.dias??'',Borrada:l.borrada?'sí':'',Id_sesión:l.sesion_id}; })
-  });
-};
-async function contarSesionesHoy(){ try{ const {count}=await sb.from('sesiones_manga').select('*',{count:'exact',head:true}).gte('inicio',hoy()+'T00:00:00'); $('nSes').textContent=count||''; }catch(e){} }
 
 // ---------- CONFIG ----------
 async function cargarConfig(){
