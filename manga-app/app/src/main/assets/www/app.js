@@ -294,6 +294,11 @@ $('selEmpezar').onclick = () => {
 $('rdManual').onclick = abrirManual;
 $('rdLista').onclick = () => { lsF = ''; pintarLista(); show('list'); };
 $('rdCerrar').onclick = () => { pintarCierre(); show('close'); };
+function descartarSesion() {
+  const n = sesion ? contar(sesion).total : 0;
+  confirmar(`<h2>¿Descartar esta sesión?</h2><p>Se vuelve al inicio sin guardar ni enviar nada al portal${n ? ` (se pierden ${n} lecturas)` : ''}.</p>`, () => { sesion = null; guardarSesion(); toast('Sesión descartada'); irHome(); }, 'Descartar');
+}
+$('rdDescartar').onclick = descartarSesion;
 
 // --- manual ---
 let mn = '';
@@ -346,6 +351,7 @@ function buscarYProcesar() {
 $('mnVolver').onclick = () => { show('read'); pintarContadores(); pintarConn(); };
 $('mnLista').onclick = () => { lsF = ''; pintarLista(); show('list'); };
 $('mnCerrar').onclick = () => { pintarCierre(); show('close'); };
+$('mnDescartar').onclick = descartarSesion;
 
 // --- listado ---
 let lsF = '';

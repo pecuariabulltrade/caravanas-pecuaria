@@ -12,8 +12,8 @@ Flujo (el mismo que se hace a mano en la página, pero con varios lotes a la vez
      "Ejecutar proceso de validación".
   3. Espera a que cada lote quede FINALIZADO (~1 minuto por caravana, los lotes corren en paralelo).
      Si en el lote figura "ERROR: NO SE PUDO LEER EL CUIT EN ARCA" para un RENSPA, las caravanas que
-     VISEC inhabilitó por ese RENSPA quedan como "ERROR ARCA" (no es un resultado real) y se vuelven a
-     consultar en un lote nuevo otro día, hasta VISEC_REINTENTOS veces más.
+     VISEC inhabilitó por ese RENSPA quedan como "ERROR ARCA" (no es un resultado real). No se reconsultan
+     solas: cuando el RENSPA se arregle, borrar esas filas de visec_consultas y el robot las vuelve a tomar.
   4. Lee en la lupa del lote el estado y la observación de cada caravana (HABILITADA / INHABILITADA /
      NÚMERO INEXISTENTE / ...), lo guarda en Supabase (visec_guardar) y descarta el lote en VISEC.
   5. Apenas termina un lote, en esa misma pestaña arma el siguiente: no hay tiempo ocioso. Sigue hasta que
@@ -23,8 +23,8 @@ Flujo (el mismo que se hace a mano en la página, pero con varios lotes a la vez
 
 Variables en sync\\.env:
   VISEC_USUARIO, VISEC_CLAVE          usuario y clave de VISEC
-  VISEC_LOTE=50                       caravanas por lote (opcional)
-  VISEC_PARALELO=3                    lotes (pestañas) a la vez (opcional)
+  VISEC_LOTE=15                       caravanas por lote (opcional; 15 entran en una página de la lupa)
+  VISEC_PARALELO=4                    lotes (pestañas) a la vez (opcional)
   VISEC_MAX_MIN=0                     minutos máximos por corrida (0 = hasta terminar; la tarea de cada hora lo relanza si murió)
   VISEC_REINTENTOS=2                  reconsultas (otros días) de las que quedaron ERROR ARCA (opcional; lo aplica Supabase)
   VISEC_VISIBLE=0                     poner 1 para ver el navegador (para probar)
@@ -50,13 +50,16 @@ SB_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 VISEC_URL = "https://carne.visec.com.ar"
 USUARIO = os.environ.get("VISEC_USUARIO", "")
 CLAVE = os.environ.get("VISEC_CLAVE", "")
-LOTE = int(os.environ.get("VISEC_LOTE", "50"))
-PARALELO = max(1, int(os.environ.get("VISEC_PARALELO", "3")))
+LOTE = int(os.environ.get("VISEC_LOTE", "15"))      # 15 = una sola página en la lupa de VISEC
+PARALELO = max(1, int(os.environ.get("VISEC_PARALELO", "4")))
 MAX_MIN = int(os.environ.get("VISEC_MAX_MIN", "0"))   # 0 = sin límite
 REINTENTOS = int(os.environ.get("VISEC_REINTENTOS", "2"))
 VISIBLE = os.environ.get("VISEC_VISIBLE", "0") == "1"
-SEG_POR_CARAVANA = 90          # tope de espera por caravana para que termine la validación
+SIN_AVANCE_MIN = 60            # si VISEC no muestra avance en el lote durante este tiempo, se da por colgado
+TOPE_LOTE_H = 6                # tope absoluto de espera por lote
 LOCK = AQUI / "visec_consulta.lock"
+STOP = AQUI / "visec_consulta.stop"   # si existe, el robot termina los lotes abiertos y sale (DETENER_VISEC.bat)
+MI_MTIME = Path(__file__).stat().st_mtime   # si se reemplaza este archivo, el robot termina lo abierto y sale (se relanza solo)
 ERROR_ARCA = "ERROR ARCA"
 
 log = logging.getLogger("visec")
@@ -240,7 +243,11 @@ def estado_lote(page, w):
     txt = texto(page)
     m = re.findall(r"\d{2}:\d{2}:\d{2} - [^\n]+", txt)
     if m and m[-1] != w.get("ultimo"):
-        w["ultimo"] = m[-1]; log.info("  [%s] %s", w["informe"], m[-1])
+        w["ultimo"] = m[-1]; w["ultimo_avance"] = time.time(); log.info("  [%s] %s", w["informe"], m[-1])
+    me = re.search(r"ESTADO\s*\n\s*([A-ZÁÉÍÓÚ ]+)", txt)
+    if me and me.group(1).strip() != w.get("estado_visec"):
+        w["estado_visec"] = me.group(1).strip(); w["ultimo_avance"] = time.time()
+        log.info("  [%s] Estado VISEC: %s", w["informe"], w["estado_visec"])
     if re.search(r"ESTADO\s*\n\s*FINALIZADO", txt) and page.locator("[class*=spin]:visible").count() == 0:
         return "finalizado"
     if ("reload" in txt.lower() and "blazor" in txt.lower()) or "Attempting to reconnect" in txt or "Could not reconnect" in txt:
@@ -359,7 +366,7 @@ def nuevo_lote(ctx, sb, en_curso):
         ejecutar_validacion(page)
         log.info("  [%s] Lote de %d caravanas guardado; validando", informe, len(nums))
         return {"page": page, "informe": informe, "nums": nums, "reintentos": 0, "fin": None,
-                "tope": time.time() + max(600, len(nums) * SEG_POR_CARAVANA)}
+                "ultimo_avance": time.time(), "tope": time.time() + TOPE_LOTE_H * 3600}
     except Exception as e:
         log.error("  No pude armar un lote (%s); esas %d caravanas quedan para más adelante", e, len(nums))
         if page is not None and not re.search(r"crashed|closed|disconnected", str(e), re.I):
@@ -391,7 +398,7 @@ def cerrar_lote(sb, w):
                 if f["estado"] == "INHABILITADA" and any(r in (f["observacion"] or "") for r in errores):
                     f["estado"] = ERROR_ARCA; n_err += 1
             if n_err:
-                log.warning("  [%s] %d caravanas quedan como %s (se reconsultan otro día)", informe, n_err, ERROR_ARCA)
+                log.warning("  [%s] %d caravanas quedan como %s (RENSPA con problema; no se reconsultan solas)", informe, n_err, ERROR_ARCA)
         n = sb.rpc("visec_guardar", {"p_filas": filas, "p_informe": informe}) or 0
         resumen = {e: sum(1 for f in filas if f["estado"] == e) for e in {f["estado"] for f in filas}}
         log.info("  [%s] Guardados %d resultados: %s", informe, n, ", ".join(f"{k}={v}" for k, v in sorted(resumen.items())))
@@ -405,9 +412,21 @@ def cerrar_lote(sb, w):
     return n
 
 
+RECARGA_SEG = 180              # si la pantalla del lote no muestra avance en este tiempo, se recarga (Blazor deja de refrescar)
+
+
 def revisar(w):
     """Avanza el estado de un lote en validación. Deja w['fin'] = 'ok' / 'timeout' cuando está para leer."""
     page = w["page"]
+    ahora = time.time()
+    # La pantalla del lote deja de actualizarse sola al rato (el circuito Blazor se queda mudo aunque VISEC
+    # siga trabajando): si no hubo novedades en RECARGA_SEG, se recarga para ver el estado real.
+    if ahora - w.get("ultimo_avance", ahora) > RECARGA_SEG and ahora - w.get("ultima_recarga", 0) > RECARGA_SEG:
+        w["ultima_recarga"] = ahora
+        try:
+            abrir_lote(page, w["informe"])
+        except Exception as e:
+            log.warning("  [%s] No pude recargar la pantalla: %s", w["informe"], e)
     try:
         est = estado_lote(page, w)
     except Exception as e:
@@ -426,8 +445,9 @@ def revisar(w):
             # reconsultan en un lote nuevo otro día (hasta VISEC_REINTENTOS veces).
             log.warning("  [%s] VISEC no pudo leer ARCA para %s", w["informe"], ", ".join(sorted(errores)))
         w["fin"] = "ok"; w["errores"] = errores
-    elif time.time() > w["tope"]:
-        log.warning("  [%s] El lote no terminó en el tiempo previsto; leo lo que haya", w["informe"])
+    elif time.time() > w["tope"] or time.time() - w.get("ultimo_avance", time.time()) > SIN_AVANCE_MIN * 60:
+        # VISEC tarda lo que tarda (hoy ~1,5 min por caravana); solo se abandona si dejó de avanzar
+        log.warning("  [%s] El lote no muestra avance hace %d min; leo lo que haya", w["informe"], SIN_AVANCE_MIN)
         w["fin"] = "timeout"; w["errores"] = set()
 
 
@@ -455,6 +475,10 @@ def main():
             sin_pendientes = False
             while True:
                 hay_tiempo = MAX_MIN <= 0 or (time.time() - inicio) < MAX_MIN * 60
+                if STOP.exists() or Path(__file__).stat().st_mtime != MI_MTIME:
+                    if not sin_pendientes:
+                        log.info("Pedido de parada (visec_consulta.stop o versión nueva del robot): no abro lotes nuevos, termino los abiertos y salgo; la tarea de cada hora lo relanza")
+                    sin_pendientes = True
                 # llenar las pestañas libres con lotes nuevos (apenas se libera una, arranca otro lote)
                 while hay_tiempo and not sin_pendientes and len(workers) < PARALELO and fallas_seguidas < 6:
                     en_curso = {n for w in workers for n in w["nums"]}
@@ -505,6 +529,10 @@ def main():
         sys.exit(1)
     finally:
         soltar_bloqueo()
+        try:
+            STOP.unlink()
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":

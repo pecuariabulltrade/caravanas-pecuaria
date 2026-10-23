@@ -188,6 +188,7 @@ let fallos = 0; const ok = (c, m) => { if (!c) { fallos++; console.log('FALLA:',
   for (const k of '000002') await page.click(`.pad [data-k="${k}"]`);
   await page.click('.pad [data-k=OK]');
   ok((await page.textContent('#mnBBig')) === 'NO' && (await page.textContent('#mnBMot')).includes('BULLTRADE') && (await page.textContent('#mR')) === '1', 'banner rojo con motivo');
+  ok(await page.isVisible('#mnDescartar'), 'modo manual tiene Descartar sesión');
   await page.click('#mnLista'); ok(await page.isVisible('#s-list') && (await page.evaluate(() => document.querySelectorAll('#lsBox .it').length)) === 2, 'listado desde modo manual');
   await page.click('#lsVolver'); ok(await page.isVisible('#s-manual'), 'volver del listado regresa al teclado');
   await page.reload(); await page.click('#homeSeguir'); ok(await page.isVisible('#s-manual') && (await page.textContent('#mT')) === '2', 'continuar sesión manual tras reinicio');
@@ -212,6 +213,15 @@ let fallos = 0; const ok = (c, m) => { if (!c) { fallos++; console.log('FALLA:',
   await page.click('#ckContinuar');
   await page.click('#selDestino [data-v=CONSUMO]'); await page.click('#selCat [data-v=VACA]'); await page.click('#selProp [data-v=PEGSA]'); await page.click('#selEmpezar');
   await linea('032 000000000001'); ok(await color() === 'c-verde' && (await page.textContent('#rdConn')).includes('Bastón'), 'lectura del bastón se procesa igual');
+  // descartar sesión: cancelar y confirmar
+  await page.click('#rdDescartar'); ok((await page.textContent('#modalBox')).includes('1 lecturas'), 'descartar pide confirmación con la cantidad');
+  await page.click('#modalBox button[data-i="0"]'); ok(await page.isVisible('#s-read') && (await page.textContent('#cT')) === '1', 'cancelar mantiene la sesión');
+  await page.click('#rdDescartar'); await page.click('#modalBox button[data-i="1"]');
+  ok(await page.isVisible('#s-home') && !(await page.textContent('#homeAbierta')).includes('sesión abierta') && await page.evaluate(() => localStorage.getItem('sesion') === null), 'descartar vuelve al inicio sin sesión guardada');
+  rpcBody = null;
+  await page.click('#btnIniciar'); await page.waitForFunction(() => !document.getElementById('ckContinuar').disabled, null, { timeout: 20000 }); await page.click('#ckContinuar');
+  await page.click('#selDestino [data-v=CONSUMO]'); await page.click('#selCat [data-v=VACA]'); await page.click('#selProp [data-v=PEGSA]'); await page.click('#selEmpezar');
+  await linea('032 000000000001');
   await page.click('#rdCerrar'); await page.click('#clConfirmar'); await page.click('#modalBox button[data-i="1"]'); await page.waitForSelector('#s-home.on', { timeout: 6000 });
   await page.screenshot({ path: path.join(__dirname, 'captura_home.png') });
   await browser.close(); server.close();

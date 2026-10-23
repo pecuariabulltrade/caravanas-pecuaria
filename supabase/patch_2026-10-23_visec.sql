@@ -48,8 +48,10 @@ revoke all on visec_consultas, visec_solicitudes, visec_corridas from anon;
 -- Caravanas a consultar: las electrónicas que están en el padrón (ACTIVAS y SALIDAS; las vírgenes, bajas y
 -- anuladas no). Orden: 1) pedidas a mano desde el portal, 2) machos (MACHO/TORO) de PEGSA y BULLTRADE,
 -- 3) el resto; dentro de cada grupo primero las activas y las de alta más reciente.
--- Se reintentan las que quedaron con resultado provisorio (EN PROCESO / EN ESPERA / EN VALIDACIÓN / ERROR ARCA) de días anteriores, hasta 3 intentos.
--- ERROR ARCA: VISEC no pudo leer el CUIT en ARCA al validar (lo pone el robot; no es un resultado real).
+-- Se reintentan las que quedaron con resultado provisorio (EN PROCESO / EN ESPERA / EN VALIDACIÓN) después de 2 horas, hasta 3 intentos.
+-- ERROR ARCA: VISEC no pudo leer el CUIT en ARCA al validar (lo pone el robot; no es un resultado real). NO se reintenta
+-- sola: el RENSPA 03.014.3.00203/01 (Bulltrade) tiene un problema conocido. Cuando se arregle, para reconsultarlas:
+--   delete from visec_consultas where estado = 'ERROR ARCA';
 create or replace function visec_pendientes(p_max int default 100) returns setof text language sql stable security definer as $$
   select numero from (
     select distinct on (numero) numero, prio, estado, fecha_alta from (
@@ -64,7 +66,7 @@ create or replace function visec_pendientes(p_max int default 100) returns setof
       left join propietarios p on p.id = c.propietario_id
       left join visec_consultas v on v.caravana = c.numero
      where c.tipo = 'electronica' and c.estado in ('activa','salida')
-       and (v.caravana is null or (v.estado in ('EN PROCESO','EN ESPERA','EN VALIDACIÓN','ERROR ARCA') and v.fecha < current_date and v.intentos <= 3))
+       and (v.caravana is null or (v.estado in ('EN PROCESO','EN ESPERA','EN VALIDACIÓN') and v.actualizado_en < now() - interval '2 hours' and v.intentos <= 3))
   ) u order by numero, prio) t
   order by prio, (estado <> 'activa'), fecha_alta desc nulls last, numero limit p_max;
 $$;
