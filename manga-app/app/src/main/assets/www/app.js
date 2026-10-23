@@ -154,7 +154,8 @@ function mostrarLectura(l) {
   const s = $('s-read'); s.classList.remove('c-verde', 'c-amarillo', 'c-rojo'); s.classList.add('c-' + l.color);
   $('rdEsperando').classList.add('hidden'); $('rdBox').classList.remove('hidden');
   $('rdNum').textContent = l.caravana;
-  $('rdBig').textContent = l.color === 'verde' ? 'OK' : l.color === 'amarillo' ? 'REVISAR' : 'NO';
+  $('rdBig').textContent = l.color === 'verde' ? 'OK' : l.color === 'amarillo' ? 'NO ESTÁ' : 'NO';
+  $('rdElegir').classList.add('hidden');
   const det = [];
   if (l.propietario) det.push(l.propietario);
   if (l.categoria) det.push(l.categoria);
@@ -200,7 +201,9 @@ window.Manga = {
   onLine(line) {
     addLog('< ' + line);
     const num = Reglas.extraerCaravana(line);
-    if (num) procesar(num, 'baston');
+    if (num) return procesar(num, 'baston');
+    const parcial = Reglas.extraerParcial(line);
+    if (parcial && sesion) procesarParcial(parcial);
   },
   onStatus(st) { conn = st || conn; pintarConn(); },
   onLog(t) { addLog(t); },
@@ -300,6 +303,41 @@ function descartarSesion() {
 }
 $('rdDescartar').onclick = descartarSesion;
 
+// Dígitos parciales que vienen de la balanza (tecleados en el IDE): se buscan por terminación como en la carga a mano
+function procesarParcial(dig) {
+  const r = buscarManual(dig);
+  if (r.length === 1) return procesar(r[0], 'manual');
+  if (!r.length) {
+    // no hay ninguna que termine así: se registra tal cual como "no está en el padrón" (amarillo)
+    return procesar(dig, 'manual');
+  }
+  const propSes = sesion.propietario;
+  r.sort((a, b) => ((fila(b).propietario === propSes) - (fila(a).propietario === propSes)) || a.localeCompare(b));
+  A.beep('amarillo');
+  if (sesion.modo === 'manual') { mn = dig; pintarManual(); buscarYProcesar(); return; }
+  const box = $('rdElegir');
+  box.innerHTML = `<div class="msg warn" style="font-size:18px">${r.length} caravanas terminan en ${esc(dig)}. Tocá la correcta:</div><div class="lista">` +
+    r.slice(0, 30).map(n => { const f = fila(n); return `<button class="b it" data-n="${n}" style="width:100%;justify-content:flex-start;text-align:left"><span class="n">${n}</span><span class="d">${esc(f.propietario)} · ${esc(f.categoria)} · ${esc(f.estado)}</span></button>`; }).join('') +
+    `</div><button class="b" id="rdElegirCancelar" style="margin-top:8px">Cancelar</button>`;
+  box.classList.remove('hidden');
+  $('rdEsperando').classList.add('hidden'); $('rdBox').classList.add('hidden');
+  $('s-read').classList.remove('c-verde', 'c-amarillo', 'c-rojo');
+  box.onclick = e => { const c = e.target.closest('#rdElegirCancelar'); if (c) { box.classList.add('hidden'); abrirLectura(); return; } const b = e.target.closest('button[data-n]'); if (!b) return; box.classList.add('hidden'); procesar(b.dataset.n, 'manual'); };
+}
+
+// "No guardar esta caravana": quita la última lectura (solo mientras no se haya leído la siguiente)
+function noGuardarUltima() {
+  if (!sesion || !sesion.lecturas.length) return;
+  const ult = sesion.lecturas[sesion.lecturas.length - 1];
+  if (ult.borrada) return toast('La última lectura ya está borrada');
+  sesion.lecturas.pop(); guardarSesion();
+  ultima = { num: '', t: 0 };
+  toast(`${ult.caravana} no se guardó`);
+  abrirLectura();
+}
+$('rdNoGuardar').onclick = noGuardarUltima;
+$('mnNoGuardar').onclick = noGuardarUltima;
+
 // --- manual ---
 let mn = '';
 function pintarManual() { $('mnDisp').innerHTML = mn ? esc(mn) : '&nbsp;'; }
@@ -309,7 +347,7 @@ function pintarBanner(l) {
   if (!l) { b.classList.add('hidden'); return; }
   b.classList.remove('hidden'); b.style.background = COLOR_FONDO[l.color];
   $('mnBNum').textContent = l.caravana;
-  $('mnBBig').textContent = l.color === 'verde' ? 'OK' : l.color === 'amarillo' ? 'REVISAR' : 'NO';
+  $('mnBBig').textContent = l.color === 'verde' ? 'OK' : l.color === 'amarillo' ? 'NO ESTÁ' : 'NO';
   const det = []; if (l.propietario) det.push(l.propietario); if (l.categoria) det.push(l.categoria); if (l.dias != null) det.push(l.dias + ' días en SENASA'); if (l.estado && l.estado !== 'activa') det.push('estado: ' + l.estado);
   $('mnBDet').textContent = det.join(' · '); $('mnBMot').textContent = l.motivos.join(' — ');
 }

@@ -177,7 +177,9 @@ h2{font-size:22px;margin:0 0 12px}h3{font-size:18px;margin:14px 0 8px}
       <div class="det" id="rdDet"></div>
       <div class="mot" id="rdMot"></div>
       <div class="esp" id="rdFuente"></div>
+      <button class="b" id="rdNoGuardar" style="margin-top:22px;background:rgba(255,255,255,.92);color:var(--rojo);border-color:transparent;font-weight:600">✕ No guardar esta caravana</button>
     </div>
+    <div id="rdElegir" class="hidden" style="width:min(640px,100%);text-align:left"></div>
   </div>
   <div class="bottom">
     <button class="b" id="rdManual">Ingresar a mano</button>
@@ -191,7 +193,7 @@ h2{font-size:22px;margin:0 0 12px}h3{font-size:18px;margin:14px 0 8px}
 <section id="s-manual" class="screen">
   <div class="top"><h1 id="mnTitulo">Ingresar a mano</h1><span class="sp"></span><div class="cnt"><span class="t" id="mT">0</span><span class="v" id="mV">0</span><span class="a" id="mA">0</span><span class="r" id="mR">0</span></div><button class="b" id="mnVolver">Volver</button></div>
   <div class="body">
-    <div id="mnBanner" class="hidden" style="border-radius:12px;padding:14px;color:#fff;text-align:center;margin-bottom:12px"><div class="num" id="mnBNum" style="font-family:ui-monospace,Consolas,monospace;font-size:30px;font-weight:700"></div><div id="mnBBig" style="font-size:40px;font-weight:800;line-height:1.1"></div><div id="mnBDet" style="font-size:18px;margin-top:4px"></div><div id="mnBMot" style="font-size:22px;font-weight:700;margin-top:6px"></div></div>
+    <div id="mnBanner" class="hidden" style="border-radius:12px;padding:14px;color:#fff;text-align:center;margin-bottom:12px"><div class="num" id="mnBNum" style="font-family:ui-monospace,Consolas,monospace;font-size:30px;font-weight:700"></div><div id="mnBBig" style="font-size:40px;font-weight:800;line-height:1.1"></div><div id="mnBDet" style="font-size:18px;margin-top:4px"></div><div id="mnBMot" style="font-size:22px;font-weight:700;margin-top:6px"></div><button class="b" id="mnNoGuardar" style="margin-top:10px;background:rgba(255,255,255,.92);color:var(--rojo);border-color:transparent;font-weight:600;min-height:44px;padding:8px 16px">✕ No guardar esta caravana</button></div>
     <p class="muted" style="text-align:center">Tipeá por lo menos los últimos 6 dígitos de la caravana (o el número completo).</p>
     <div class="disp" id="mnDisp">&nbsp;</div>
     <div class="pad">

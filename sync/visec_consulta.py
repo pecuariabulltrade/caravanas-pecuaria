@@ -412,7 +412,7 @@ def cerrar_lote(sb, w):
     return n
 
 
-RECARGA_SEG = 180              # si la pantalla del lote no muestra avance en este tiempo, se recarga (Blazor deja de refrescar)
+RECARGA_SEG = 300              # si la pantalla del lote no muestra avance en este tiempo, se recarga (Blazor deja de refrescar)
 
 
 def revisar(w):
@@ -445,9 +445,15 @@ def revisar(w):
             # reconsultan en un lote nuevo otro día (hasta VISEC_REINTENTOS veces).
             log.warning("  [%s] VISEC no pudo leer ARCA para %s", w["informe"], ", ".join(sorted(errores)))
         w["fin"] = "ok"; w["errores"] = errores
-    elif time.time() > w["tope"] or time.time() - w.get("ultimo_avance", time.time()) > SIN_AVANCE_MIN * 60:
-        # VISEC tarda lo que tarda (hoy ~1,5 min por caravana); solo se abandona si dejó de avanzar
-        log.warning("  [%s] El lote no muestra avance hace %d min; leo lo que haya", w["informe"], SIN_AVANCE_MIN)
+    elif time.time() > w["tope"]:
+        log.warning("  [%s] El lote lleva %d horas sin terminar; leo lo que haya", w["informe"], TOPE_LOTE_H)
+        w["fin"] = "timeout"; w["errores"] = set()
+    elif w.get("estado_visec") not in ("EN PROCESO", "EN ESPERA", "EN VALIDACIÓN", "CREANDO") \
+            and time.time() - w.get("ultimo_avance", time.time()) > SIN_AVANCE_MIN * 60:
+        # Mientras VISEC diga EN PROCESO / EN ESPERA (cola de VISEC) / EN VALIDACIÓN se espera: tarda lo que
+        # tarda (a la tarde hubo lotes de 15 que demoraron más de una hora en la cola). Solo se abandona
+        # si la pantalla no dice nada reconocible durante SIN_AVANCE_MIN.
+        log.warning("  [%s] La pantalla no muestra un estado reconocible hace %d min (%r); leo lo que haya", w["informe"], SIN_AVANCE_MIN, w.get("estado_visec"))
         w["fin"] = "timeout"; w["errores"] = set()
 
 

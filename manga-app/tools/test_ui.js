@@ -88,17 +88,31 @@ let fallos = 0; const ok = (c, m) => { if (!c) { fallos++; console.log('FALLA:',
   await linea('032 000000000002, 380'); ok(await color() === 'c-rojo' && (await page.textContent('#rdMot')).includes('BULLTRADE'), 'macho BULLTRADE → rojo con motivos');
   await linea('032000000000003'); ok(await color() === 'c-rojo' && (await page.textContent('#rdMot')).includes('faltan'), 'hembra 21 días exportación → rojo');
   await linea('032000000000004'); ok(await color() === 'c-rojo' && (await page.textContent('#rdMot')).includes('Dada de baja'), 'baja → rojo');
-  await linea('032000000000099'); ok(await color() === 'c-rojo' && (await page.textContent('#rdMot')).includes('No está'), 'no está en el padrón');
+  await linea('032000000000099'); ok(await color() === 'c-amarillo' && (await page.textContent('#rdMot')).includes('No está') && (await page.textContent('#rdBig')) === 'NO ESTÁ', 'no está en el padrón = amarillo');
   await linea('123.4'); ok((await page.textContent('#cT')) === '5', 'una línea sin caravana no registra');
   await page.evaluate(() => { window.__t0 = Date.now(); });
   await page.waitForTimeout(100);
   // repetida: simulamos que pasaron más de 3 s cambiando el reloj de la última lectura
   await page.evaluate(() => { /* fuerza repetida */ });
-  await linea('032000000000002'); // distinta de la última (099) → no es dedupe; ya leída → amarillo (rojo por propietario manda)
+  await linea('032000000000002'); // distinta de la última (099) → no es dedupe; ya leída → aviso REPETIDA, color rojo por propietario
   ok(await color() === 'c-rojo' && (await page.textContent('#rdMot')).includes('REPETIDA'), 'repetida se marca junto con los otros motivos');
-  const cnt = await page.evaluate(() => ['cT', 'cV', 'cA', 'cR'].map(i => +document.getElementById(i).textContent));
-  ok(cnt.join() === '6,1,0,5', 'contadores ' + cnt.join());
-  ok(await page.evaluate(() => window.__beeps.filter(b => b === 'rojo').length) === 5, 'beeps rojos');
+  let cnt = await page.evaluate(() => ['cT', 'cV', 'cA', 'cR'].map(i => +document.getElementById(i).textContent));
+  ok(cnt.join() === '6,1,1,4', 'contadores ' + cnt.join());
+  ok(await page.evaluate(() => window.__beeps.filter(b => b === 'rojo').length) === 4, 'beeps rojos');
+  // no guardar la última
+  await page.click('#rdNoGuardar');
+  cnt = await page.evaluate(() => ['cT', 'cV', 'cA', 'cR'].map(i => +document.getElementById(i).textContent));
+  ok(cnt.join() === '5,1,1,3' && (await page.textContent('#rdNum')) === '032000000000099', 'No guardar quita la última y muestra la anterior ' + cnt.join());
+  await linea('032000000000002'); // ahora ya no es repetida de la quitada… sigue existiendo la 002 anterior → REPETIDA igual
+  ok((await page.textContent('#cT')) === '6', 'vuelve a leer y se registra');
+  // dígitos parciales tecleados en la balanza
+  await linea('200001'); ok(await color() === 'c-verde' && (await page.textContent('#rdNum')) === '032000000200001' && (await page.textContent('#rdFuente')).includes('a mano'), 'parcial único desde la balanza → se resuelve y marca a mano');
+  await linea('000001'); ok(await page.isVisible('#rdElegir') && (await page.evaluate(() => document.querySelectorAll('#rdElegir button[data-n]').length)) === 2, 'parcial ambiguo desde la balanza muestra opciones');
+  await page.click('#rdElegirCancelar'); ok(!(await page.isVisible('#rdElegir')) && (await page.textContent('#cT')) === '7', 'cancelar no registra');
+  await linea('000001'); await page.click('#rdElegir button[data-n="032000001000001"]');
+  ok(await color() === 'c-rojo' && (await page.textContent('#rdMot')).includes('DARWASH') && (await page.textContent('#cT')) === '8', 'elegida de la lista se registra');
+  await page.click('#rdNoGuardar'); await page.click('#rdNoGuardar');
+  ok((await page.textContent('#cT')) === '6', 'dos No guardar seguidos quitan las dos últimas');
 
   // manual
   await page.click('#rdManual'); ok(await page.isVisible('#s-manual'), 'teclado manual');
@@ -119,11 +133,12 @@ let fallos = 0; const ok = (c, m) => { if (!c) { fallos++; console.log('FALLA:',
   await page.click('.pad [data-k=OK]');
   ok((await page.textContent('#mnRes')).includes('Ninguna'), 'sufijo inexistente avisa');
   await page.click('#mnVolver');
+  await linea('032000000000004'); // la baja → rojo, para que el listado tenga 6 rojas como antes
 
   // listado y borrado
   await page.click('#rdLista');
   let items = await page.evaluate(() => document.querySelectorAll('#lsBox .it').length);
-  ok(items === 8, 'listado con 8 lecturas (' + items + ')');
+  ok(items === 9, 'listado con 9 lecturas (' + items + ')');
   await page.click('#lsFiltro [data-f=rojo]');
   items = await page.evaluate(() => document.querySelectorAll('#lsBox .it').length);
   ok(items === 6, 'filtro rojas = 6 (' + items + ')');
@@ -133,18 +148,18 @@ let fallos = 0; const ok = (c, m) => { if (!c) { fallos++; console.log('FALLA:',
   await page.click('#lsFiltro [data-f=borrada]');
   ok(await page.evaluate(() => document.querySelectorAll('#lsBox .it.borrada').length) === 1, 'filtro borradas muestra 1');
   await page.click('#lsVolver');
-  ok((await page.textContent('#cT')) === '7', 'contador descontó la borrada');
+  ok((await page.textContent('#cT')) === '8', 'contador descontó la borrada');
 
   // persistencia: recargar y continuar
   await page.reload();
-  ok(await page.isVisible('#s-home') && (await page.textContent('#homeAbierta')).includes('7 lecturas'), 'sesión abierta sobrevive al reinicio');
-  await page.click('#homeSeguir'); ok(await page.isVisible('#s-read') && (await page.textContent('#cT')) === '7', 'continúa la sesión');
+  ok(await page.isVisible('#s-home') && (await page.textContent('#homeAbierta')).includes('8 lecturas'), 'sesión abierta sobrevive al reinicio');
+  await page.click('#homeSeguir'); ok(await page.isVisible('#s-read') && (await page.textContent('#cT')) === '8', 'continúa la sesión');
 
   // cierre y envío
-  await page.click('#rdCerrar'); ok(await page.isVisible('#s-close') && (await page.textContent('#clResumen')).includes('Total 7'), 'resumen de cierre');
+  await page.click('#rdCerrar'); ok(await page.isVisible('#s-close') && (await page.textContent('#clResumen')).includes('Total 8'), 'resumen de cierre');
   await page.click('#clConfirmar'); await page.click('#modalBox button[data-i="1"]');
   await page.waitForSelector('#clMsg .msg.ok', { timeout: 5000 });
-  ok(rpcBody && rpcBody.p_sesion.total === 7 && rpcBody.p_sesion.rojas === 5 && rpcBody.p_sesion.borradas === 1 && rpcBody.p_lecturas.length === 8, 'RPC con totales correctos ' + JSON.stringify(rpcBody && rpcBody.p_sesion));
+  ok(rpcBody && rpcBody.p_sesion.total === 8 && rpcBody.p_sesion.rojas === 5 && rpcBody.p_sesion.amarillas === 1 && rpcBody.p_sesion.borradas === 1 && rpcBody.p_lecturas.length === 9, 'RPC con totales correctos ' + JSON.stringify(rpcBody && rpcBody.p_sesion));
   ok(rpcBody.p_lecturas.filter(l => l.borrada).length === 1 && rpcBody.p_lecturas.filter(l => l.fuente === 'manual').length === 2, 'lecturas con borrada y fuente manual');
   ok(rpcBody.p_sesion.destino === 'EXPORTACION' && rpcBody.p_sesion.propietario_id === 1 && rpcBody.p_sesion.fin, 'cabecera de sesión');
   await page.waitForSelector('#s-home.on', { timeout: 5000 });

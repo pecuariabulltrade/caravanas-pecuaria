@@ -61,9 +61,11 @@ En ⚙ Configuración → Conexión hay tres opciones:
 1. **Iniciar trabajo de manga** → chequeo: balanza, internet, padrón (se descarga actualizado si hay wifi; si no, usa la última copia) y envío de sesiones pendientes.
 2. Elegir **destino** (Exportación exige 90 días desde la activación en SENASA; Consumo no controla días), **categoría** (HEMBRA, VACA o MACHO, que incluye TORO) y **propietario**.
 3. Leer: cada caravana pinta la pantalla.
-   - **Verde**: coincide.
-   - **Amarillo**: hembra/vaca cruzadas, toro en sesión de machos, categoría MIXTO o caravana repetida en la sesión.
-   - **Rojo**: no está en el padrón, dada de baja, otro propietario, categoría opuesta o sin 90 días (exportación). Rojo manda sobre amarillo; el cartel muestra todos los motivos.
+   - **Verde**: está en el padrón SENASA y coincide propietario, categoría y días.
+   - **Amarillo**: la caravana no existe en el padrón.
+   - **Rojo**: está en el padrón pero no coincide: otro propietario, otra categoría (hembra y vaca son distintas; toro cuenta como macho), menos de 90 días en exportación, o dada de baja. El cartel muestra todos los motivos; una repetida en la sesión agrega el aviso "REPETIDA".
+   - **No guardar esta caravana**: quita la última lectura mientras no se haya leído la siguiente.
+   - Si en el IDE de la balanza se tipean a mano los últimos 6 dígitos (o más) y Enter, la app los busca por terminación igual que la carga a mano.
 4. **Ingresar a mano**: últimos 6 dígitos (o el número completo). Si varias terminan igual, se elige de la lista.
 5. **Ver listado**: filtro por color y botón *Borrar* (con confirmación). Las borradas quedan registradas aparte.
 6. **Cerrar sesión**: resumen y envío al portal. Sin wifi queda pendiente y se envía sola después (o con *Reenviar ahora* en el inicio).
