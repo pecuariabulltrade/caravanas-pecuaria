@@ -23,8 +23,9 @@ Flujo (el mismo que se hace a mano en la página, pero con varios lotes a la vez
 
 Variables en sync\\.env:
   VISEC_USUARIO, VISEC_CLAVE          usuario y clave de VISEC
+  VISEC_USUARIO2, VISEC_CLAVE2        segundo usuario (opcional; cada usuario tiene su cola en VISEC: el doble de velocidad)
   VISEC_LOTE=15                       caravanas por lote (opcional; 15 entran en una página de la lupa)
-  VISEC_PARALELO=4                    lotes (pestañas) a la vez (opcional)
+  VISEC_PARALELO=1                    lotes (pestañas) a la vez (opcional; VISEC encola por usuario, con 1 va mejor)
   VISEC_MAX_MIN=0                     minutos máximos por corrida (0 = hasta terminar; la tarea de cada hora lo relanza si murió)
   VISEC_REINTENTOS=2                  reconsultas (otros días) de las que quedaron ERROR ARCA (opcional; lo aplica Supabase)
   VISEC_VISIBLE=0                     poner 1 para ver el navegador (para probar)
@@ -48,10 +49,18 @@ load_dotenv(AQUI / ".env")
 SB_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SB_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 VISEC_URL = "https://carne.visec.com.ar"
-USUARIO = os.environ.get("VISEC_USUARIO", "")
-CLAVE = os.environ.get("VISEC_CLAVE", "")
-LOTE = int(os.environ.get("VISEC_LOTE", "15"))      # 15 = una sola página en la lupa de VISEC
-PARALELO = max(1, int(os.environ.get("VISEC_PARALELO", "4")))
+def _cuentas():
+    """Usuarios de VISEC del .env: VISEC_USUARIO/VISEC_CLAVE, VISEC_USUARIO2/VISEC_CLAVE2, VISEC_USUARIO3/... (cada
+    usuario tiene su propia cola en VISEC, así que con dos usuarios se consulta el doble)."""
+    cs = []
+    for suf in ["", "2", "3", "4", "5"]:
+        u = os.environ.get("VISEC_USUARIO" + suf, "").strip(); c = os.environ.get("VISEC_CLAVE" + suf, "").strip()
+        if u and c:
+            cs.append({"usuario": u, "clave": c})
+    return cs
+CUENTAS = _cuentas()
+LOTE = int(os.environ.get("VISEC_LOTE", "15"))      # 15 = una sola página en la lupa de VISEC (un compañero consulta de a 15/20 a mano y le anda)
+PARALELO = max(1, int(os.environ.get("VISEC_PARALELO", "1")))   # VISEC parece procesar un lote por usuario a la vez: más pestañas solo hacen cola
 MAX_MIN = int(os.environ.get("VISEC_MAX_MIN", "0"))   # 0 = sin límite
 REINTENTOS = int(os.environ.get("VISEC_REINTENTOS", "2"))
 VISIBLE = os.environ.get("VISEC_VISIBLE", "0") == "1"
@@ -162,13 +171,12 @@ def _describir_formulario(page):
         return f"(no pude leer el formulario: {e})"
 
 
-def login(page):
+def login(page, cuenta):
+    USUARIO, CLAVE = cuenta["usuario"], cuenta["clave"]
     page.goto(VISEC_URL + "/", wait_until="networkidle")
     esperar_blazor(page, 40)
     if logueado(page):
-        log.info("Sesión VISEC ya iniciada"); return
-    if not USUARIO or not CLAVE:
-        raise SystemExit("Faltan VISEC_USUARIO / VISEC_CLAVE en sync\\.env")
+        log.info("Sesión VISEC ya iniciada (%s)", USUARIO); return
     log.info("Pantalla de ingreso (%s): %s", page.url, _describir_formulario(page))
     try:
         page.screenshot(path=str(AQUI / "visec_login_1.png"))
@@ -351,10 +359,66 @@ def descartar_lote(page, informe):
         log.warning("  [%s] No se pudo descartar el lote: %s", informe, e)
 
 
+def informar_cola(ctx, usuario=""):
+    """Diagnóstico: cuántos informes de este usuario hay en cada estado en VISEC (Mis informes, primera página).
+    Sirve para ver si quedaron lotes EN PROCESO / EN ESPERA haciendo cola (por ejemplo lotes descartados a medio validar)."""
+    pg = ctx.new_page(); pg.set_default_timeout(60000)
+    try:
+        pg.goto(VISEC_URL + "/App/LotesConsultas", wait_until="networkidle"); esperar_blazor(pg, 60)
+        pg.locator("table tbody tr").first.wait_for(timeout=90000)
+        filas = []
+        for tr in pg.locator("table tbody tr").all():
+            c = [x.inner_text().strip() for x in tr.locator("td").all()]
+            if len(c) >= 4 and c[0].isdigit():
+                filas.append((c[0], c[3].upper(), c[5] if len(c) > 5 else ""))
+        cuenta = {}
+        for _, est, _ in filas:
+            cuenta[est] = cuenta.get(est, 0) + 1
+        abiertos = [f"{i} ({e}, {n})" for i, e, n in filas if e not in ("FINALIZADO", "DESCARTADO")]
+        log.info("Mis informes en VISEC de %s (1ª página, %d): %s%s", usuario, len(filas), ", ".join(f"{k}={v}" for k, v in sorted(cuenta.items())),
+                 (" | sin terminar: " + ", ".join(abiertos)) if abiertos else "")
+        return filas
+    except Exception as e:
+        log.warning("No pude leer Mis informes: %s", e)
+        return []
+    finally:
+        try:
+            pg.close()
+        except Exception:
+            pass
+
+
+def limpiar_huerfanos(ctx, sb, filas, propios):
+    """Lotes de este usuario que quedaron EN PROCESO / EN ESPERA de corridas anteriores (cortadas a mano o caídas).
+    VISEC procesa los lotes de un usuario uno detrás de otro, así que estos ocupan la cola delante de los nuevos:
+    se les lee lo que tengan, se guarda, y se descartan."""
+    huerfanos = [i for i, e, _ in filas if e not in ("FINALIZADO", "DESCARTADO") and i not in propios]
+    if not huerfanos:
+        return
+    log.warning("Hay %d lotes viejos sin terminar en la cola de VISEC (%s): los leo y descarto para liberar la cola",
+                len(huerfanos), ", ".join(huerfanos))
+    for informe in huerfanos:
+        pg = ctx.new_page(); pg.set_default_timeout(60000)
+        try:
+            abrir_lote(pg, informe)
+            filas_l = leer_resultados(pg, informe, [])
+            if filas_l:
+                n = sb.rpc("visec_guardar", {"p_filas": filas_l, "p_informe": informe}) or 0
+                log.info("  [%s] (viejo) guardados %d resultados", informe, n)
+        except Exception as e:
+            log.warning("  [%s] (viejo) no pude leer los resultados: %s", informe, e)
+        descartar_lote(pg, informe)
+        try:
+            pg.close()
+        except Exception:
+            pass
+
+
 # ───────────────────────── Lotes en paralelo, sin tiempo ocioso ─────────────────────────
-def nuevo_lote(ctx, sb, en_curso):
-    """Pide pendientes (sin las que ya están en algún lote abierto) y arma un lote en una pestaña nueva."""
-    pend = sb.rpc("visec_pendientes", {"p_max": LOTE * (PARALELO + 1)}) or []
+def nuevo_lote(cuenta, sb, en_curso):
+    """Pide pendientes (sin las que ya están en algún lote abierto) y arma un lote en una pestaña nueva del usuario."""
+    ctx = cuenta["ctx"]
+    pend = sb.rpc("visec_pendientes", {"p_max": LOTE * (PARALELO * len(CUENTAS) + 1)}) or []
     nums = [n for n in pend if n not in en_curso][:LOTE]
     if not nums:
         return None
@@ -364,16 +428,16 @@ def nuevo_lote(ctx, sb, en_curso):
         informe = crear_lote(page, nums)
         abrir_lote(page, informe)
         ejecutar_validacion(page)
-        log.info("  [%s] Lote de %d caravanas guardado; validando", informe, len(nums))
-        return {"page": page, "informe": informe, "nums": nums, "reintentos": 0, "fin": None,
+        log.info("  [%s] Lote de %d caravanas guardado (%s); validando", informe, len(nums), cuenta["usuario"])
+        return {"page": page, "informe": informe, "nums": nums, "fin": None, "cuenta": cuenta,
                 "ultimo_avance": time.time(), "tope": time.time() + TOPE_LOTE_H * 3600}
     except Exception as e:
         log.error("  No pude armar un lote (%s); esas %d caravanas quedan para más adelante", e, len(nums))
         if page is not None and not re.search(r"crashed|closed|disconnected", str(e), re.I):
             try:
                 if not logueado(page):
-                    log.warning("La sesión VISEC se cerró; vuelvo a entrar")
-                    login(page)
+                    log.warning("La sesión VISEC de %s se cerró; vuelvo a entrar", cuenta["usuario"])
+                    login(page, cuenta)
             except Exception as e2:
                 log.warning("No pude volver a entrar a VISEC: %s", e2)
         try:
@@ -381,7 +445,7 @@ def nuevo_lote(ctx, sb, en_curso):
                 page.close()
         except Exception:
             pass
-        return {"page": None, "informe": None, "nums": nums, "fin": "error", "falla": True, "error": str(e)}
+        return {"page": None, "informe": None, "nums": nums, "fin": "error", "falla": True, "error": str(e), "cuenta": cuenta}
 
 
 def cerrar_lote(sb, w):
@@ -461,55 +525,88 @@ def main():
     from playwright.sync_api import sync_playwright
     if not tomar_bloqueo():
         return
+    if not CUENTAS:
+        raise SystemExit("Faltan VISEC_USUARIO / VISEC_CLAVE en sync\\.env")
     sb = Supa()
     corrida = sb.insert("visec_corridas", {"estado": "corriendo"})["id"]
-    inicio = time.time(); total = 0; informes = []; fallas_seguidas = 0
+    inicio = time.time(); total = 0; informes = []
     try:
         if not (sb.rpc("visec_pendientes", {"p_max": 1}) or []):
             sb.patch("visec_corridas", f"id=eq.{corrida}", {"estado": "sin_pendientes", "fin": datetime.now().astimezone().isoformat(), "cantidad": 0})
             log.info("No hay caravanas pendientes de consulta VISEC"); return
         with sync_playwright() as p:
+            browser = None
+
             def abrir_navegador():
+                """Un navegador, y un contexto (cookies propias) por usuario de VISEC."""
                 b = p.chromium.launch(headless=not VISIBLE, args=["--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox", "--disable-extensions"])
-                c = b.new_context(viewport={"width": 1400, "height": 900})
-                pg = c.new_page(); pg.set_default_timeout(60000)
-                login(pg)
-                pg.close()
-                return b, c
-            browser, ctx = abrir_navegador()
+                for cu in list(CUENTAS):
+                    cu["ctx"] = b.new_context(viewport={"width": 1400, "height": 900})
+                    pg = cu["ctx"].new_page(); pg.set_default_timeout(60000)
+                    try:
+                        login(pg, cu)
+                    except Exception as e:
+                        # un usuario que no entra no frena a los demás: se lo deja afuera de esta corrida
+                        log.error("El usuario %s no pudo entrar a VISEC (%s); sigo con los demás", cu["usuario"], str(e)[:160])
+                        CUENTAS.remove(cu)
+                    finally:
+                        pg.close()
+                    cu["fallas"] = 0
+                if not CUENTAS:
+                    raise RuntimeError("Ningún usuario de VISEC pudo iniciar sesión (revisar VISEC_USUARIO/VISEC_CLAVE en sync\\.env)")
+                return b
+
+            browser = abrir_navegador()
+            log.info("Trabajando con %d usuario(s) de VISEC: %s", len(CUENTAS), ", ".join(c["usuario"] for c in CUENTAS))
+            for cu in CUENTAS:
+                limpiar_huerfanos(cu["ctx"], sb, informar_cola(cu["ctx"], cu["usuario"]), set())
+            ultimo_informe_cola = time.time()
             workers = []          # lotes abiertos (uno por pestaña)
-            sin_pendientes = False
+            sin_pendientes = False; parada_desde = None
             while True:
                 hay_tiempo = MAX_MIN <= 0 or (time.time() - inicio) < MAX_MIN * 60
                 if STOP.exists() or Path(__file__).stat().st_mtime != MI_MTIME:
-                    if not sin_pendientes:
-                        log.info("Pedido de parada (visec_consulta.stop o versión nueva del robot): no abro lotes nuevos, termino los abiertos y salgo; la tarea de cada hora lo relanza")
+                    if parada_desde is None:
+                        parada_desde = time.time()
+                        log.info("Pedido de parada (%s): no abro lotes nuevos; termino los abiertos (como mucho 20 min) y salgo; la tarea de cada hora lo relanza",
+                                 "visec_consulta.stop" if STOP.exists() else "versión nueva del robot")
                     sin_pendientes = True
-                # llenar las pestañas libres con lotes nuevos (apenas se libera una, arranca otro lote)
-                while hay_tiempo and not sin_pendientes and len(workers) < PARALELO and fallas_seguidas < 6:
-                    en_curso = {n for w in workers for n in w["nums"]}
-                    w = nuevo_lote(ctx, sb, en_curso)
-                    if w is None:
-                        sin_pendientes = True; break
-                    if w.get("falla"):
-                        fallas_seguidas += 1
-                        if re.search(r"crashed|closed|disconnected", w.get("error", ""), re.I) and not workers:
-                            # se cayó el navegador: lo reabro entero (solo si no hay lotes en curso en otras pestañas)
-                            log.warning("El navegador se cayó (%s); lo reinicio", w["error"][:80])
-                            try:
-                                browser.close()
-                            except Exception:
-                                pass
-                            browser, ctx = abrir_navegador()
-                        else:
-                            time.sleep(30)
-                        continue
-                    fallas_seguidas = 0
-                    workers.append(w)
+                    if STOP.exists() or time.time() - parada_desde > 1200:
+                        for w in workers:
+                            if w["fin"] is None:
+                                log.warning("  [%s] Se lee y descarta como está por la parada", w["informe"])
+                                w["fin"] = "parada"; w["errores"] = set()
+                # llenar las pestañas libres de cada usuario con lotes nuevos (apenas se libera una, arranca otro lote)
+                if hay_tiempo and not sin_pendientes:
+                    for cu in CUENTAS:
+                        while not sin_pendientes and sum(1 for w in workers if w["cuenta"] is cu) < PARALELO and cu["fallas"] < 6:
+                            en_curso = {n for w in workers for n in w["nums"]}
+                            w = nuevo_lote(cu, sb, en_curso)
+                            if w is None:
+                                sin_pendientes = True; break
+                            if w.get("falla"):
+                                cu["fallas"] += 1
+                                if re.search(r"crashed|closed|disconnected", w.get("error", ""), re.I) and not workers:
+                                    # se cayó el navegador: lo reabro entero (solo si no hay lotes en curso)
+                                    log.warning("El navegador se cayó (%s); lo reinicio", w["error"][:80])
+                                    try:
+                                        browser.close()
+                                    except Exception:
+                                        pass
+                                    browser = abrir_navegador()
+                                else:
+                                    time.sleep(30)
+                                continue
+                            cu["fallas"] = 0
+                            workers.append(w)
                 if not workers:
                     break
                 time.sleep(15)
                 LOCK.touch()
+                if time.time() - ultimo_informe_cola > 1800:
+                    for cu in CUENTAS:
+                        limpiar_huerfanos(cu["ctx"], sb, informar_cola(cu["ctx"], cu["usuario"]), {w["informe"] for w in workers})
+                    ultimo_informe_cola = time.time()
                 for w in workers:
                     if w["fin"] is None:
                         revisar(w)
