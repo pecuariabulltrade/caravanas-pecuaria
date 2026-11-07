@@ -7,3 +7,6 @@ tools/explor2/
 tools/explor3/
 tools/*_log.txt
 padron/
+
+# credenciales de respaldo (v15.92): el bot hace git add -A
+.env.bak*

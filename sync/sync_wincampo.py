@@ -15,7 +15,7 @@ enriquecido con los datos de la tropa. Solo entran RFID que empiezan con 032 (15
 
 Modos:
   python sync_wincampo.py --modo full                # corrida completa (programar diaria 07:00)
-  python sync_wincampo.py --modo poll                # atiende una solicitud "pendiente" de Refrescar si la hay
+  python sync_wincampo.py --modo poll                # atiende una solicitud "pendiente" de Refrescar si la hay (a lo sumo una cada REFRESCO_MIN_HORAS)
   python sync_wincampo.py --modo full --desde 2024-01-01   # carga inicial histórica
 
 Credenciales: .env en esta carpeta (ver .env.example). Si falta WINCAMPO_EMAIL, toma el .env
@@ -45,6 +45,8 @@ SB_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 RFID_OK = re.compile(r"^032\d{12}$")
 CONSIG_TRASLADO = {"TRASLADO", "DESTETE"}
 MOTIVO = {"V": "venta", "M": "muerte", "T": "traslado"}
+VENTANA_DIAS = 30        # v15.92 (era 120): WinCampo pide una consulta por día, y lo más viejo ya está en Supabase
+REFRESCO_MIN_HORAS = 6   # v15.92: que "Refrescar" no se convierta en una consulta por minuto
 CAT_MAP = {"TO": "TORO", "VA": "VACA", "VQ": "HEMBRA", "TH": "HEMBRA", "TM": "MACHO", "NT": "MACHO", "NV": "MACHO"}
 
 log = logging.getLogger("sync")
@@ -301,14 +303,37 @@ def correr(sb, desde, hasta, sync_id=None):
         return False
 
 
+def refresco_rechazado(ult_ok_fin, ahora=None):
+    """Texto de rechazo si la última sincronización `ok` terminó hace menos de REFRESCO_MIN_HORAS."""
+    if not ult_ok_fin:
+        return None
+    fin = datetime.fromisoformat(ult_ok_fin).astimezone()
+    if ((ahora or datetime.now().astimezone()) - fin).total_seconds() >= REFRESCO_MIN_HORAS * 3600:
+        return None
+    return f"Ya se sincronizó a las {fin:%H:%M}; la próxima automática es a las 07:05"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--modo", choices=["full", "poll"], default="full")
-    ap.add_argument("--desde", help="YYYY-MM-DD (default: hoy - 120 días)")
+    ap.add_argument("--desde", help=f"YYYY-MM-DD (default: hoy - {VENTANA_DIAS} días)")
     ap.add_argument("--hasta", help="YYYY-MM-DD (default: hoy)")
     a = ap.parse_args()
+    # PAUSA (Cowork 05/11/2026, pedido de Nicolas): con WINCAMPO_PAUSA.txt al lado de este script
+    # no se consulta WinCampo. Borrar el archivo para reanudar.
+    if (Path(__file__).resolve().parent / "WINCAMPO_PAUSA.txt").exists():
+        log.warning("WinCampo en PAUSA (existe WINCAMPO_PAUSA.txt): no se consulta nada. Borrar el archivo para reanudar.")
+        if a.modo == "poll":
+            try:
+                sb0 = Supa()
+                for p in sb0.select("sincronizaciones", "estado=eq.pendiente"):
+                    sb0.patch("sincronizaciones", f"id=eq.{p['id']}", {"estado": "error", "fin": datetime.now().astimezone().isoformat(),
+                              "error": "Sincronizacion con WinCampo pausada (WINCAMPO_PAUSA.txt en sync\\)"})
+            except Exception as e:
+                log.warning("no pude marcar las solicitudes pendientes: %s", e)
+        return
     hasta = date.fromisoformat(a.hasta) if a.hasta else date.today()
-    desde = date.fromisoformat(a.desde) if a.desde else hasta - timedelta(days=120)
+    desde = date.fromisoformat(a.desde) if a.desde else hasta - timedelta(days=VENTANA_DIAS)
     sb = Supa()
 
     if a.modo == "poll":
@@ -319,6 +344,12 @@ def main():
         corriendo = sb.select("sincronizaciones", "estado=eq.corriendo&order=id.desc&limit=1")
         if corriendo and (datetime.now().astimezone() - datetime.fromisoformat(corriendo[0]["inicio"])).total_seconds() < 1200:
             log.info("Hay una sincronización corriendo; espero"); return
+        ult_ok = sb.select("sincronizaciones", "estado=eq.ok&fin=not.is.null&order=fin.desc&limit=1")
+        rechazo = refresco_rechazado(ult_ok[0]["fin"]) if ult_ok else None
+        if rechazo:
+            log.info("Solicitud de refresco #%s rechazada: %s", pend[0]["id"], rechazo)
+            sb.patch("sincronizaciones", f"id=eq.{pend[0]['id']}", {"estado": "error", "fin": datetime.now().astimezone().isoformat(), "error": rechazo})
+            return
         log.info("Solicitud de refresco #%s de %s", pend[0]["id"], pend[0].get("solicitado_por"))
         ok = correr(sb, desde, hasta, sync_id=pend[0]["id"])
     else:
