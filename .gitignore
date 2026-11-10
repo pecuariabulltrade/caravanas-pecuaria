@@ -10,3 +10,9 @@ padron/
 
 # credenciales de respaldo (v15.92): el bot hace git add -A
 .env.bak*
+
+# v15.92.1: código y doc que describen la API de WinCampo (quedan en disco, no se publican)
+sync/sync_wincampo.py
+tools/explorar_wincampo*.py
+tools/EXPLORAR_WINCAMPO*.bat
+docs/api_wincampo.md
