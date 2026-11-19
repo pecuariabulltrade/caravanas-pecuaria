@@ -88,8 +88,13 @@ let fallos = 0; const ok = (c, m) => { if (!c) { fallos++; console.log('FALLA:',
   await linea('032 000000000002, 380'); ok(await color() === 'c-rojo' && (await page.textContent('#rdMot')).includes('BULLTRADE'), 'macho BULLTRADE → rojo con motivos');
   await linea('032000000000003'); ok(await color() === 'c-rojo' && (await page.textContent('#rdMot')).includes('faltan'), 'hembra 21 días exportación → rojo');
   await linea('032000000000004'); ok(await color() === 'c-rojo' && (await page.textContent('#rdMot')).includes('Dada de baja'), 'baja → rojo');
-  await linea('032000000000099'); ok(await color() === 'c-amarillo' && (await page.textContent('#rdMot')).includes('No está') && (await page.textContent('#rdBig')) === 'NO ESTÁ', 'no está en el padrón = amarillo');
+  await linea('032000000000099'); ok(await color() === 'c-amarillo' && (await page.textContent('#rdMot')).includes('inexistente') && (await page.textContent('#rdBig')) === 'INEXISTENTE', 'no está en el padrón = amarillo');
   await linea('123.4'); ok((await page.textContent('#cT')) === '5', 'una línea sin caravana no registra');
+  // una falla interna no deja la pantalla en blanco
+  await page.evaluate(() => { window.__ev = Reglas.evaluar; Reglas.evaluar = () => { throw new Error('falla simulada'); }; });
+  await linea('032000000000001');
+  ok((await page.textContent('#rdBig')) === 'ERROR' && (await page.textContent('#rdMot')).includes('falla simulada') && (await page.textContent('#cT')) === '5', 'error interno se muestra en pantalla y no registra');
+  await page.evaluate(() => { Reglas.evaluar = window.__ev; });
   await page.evaluate(() => { window.__t0 = Date.now(); });
   await page.waitForTimeout(100);
   // repetida: simulamos que pasaron más de 3 s cambiando el reloj de la última lectura

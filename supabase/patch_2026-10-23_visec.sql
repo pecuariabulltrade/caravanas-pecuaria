@@ -47,28 +47,38 @@ revoke all on visec_consultas, visec_solicitudes, visec_corridas from anon;
 
 -- Caravanas a consultar: las electrónicas que están en el padrón (ACTIVAS y SALIDAS; las vírgenes, bajas y
 -- anuladas no). Orden: 1) pedidas a mano desde el portal, 2) machos (MACHO/TORO) de PEGSA y BULLTRADE,
--- 3) el resto; dentro de cada grupo primero las activas y las de alta más reciente.
+-- 3) el resto de las electrónicas, 4) las visuales (VISEC también las informa); dentro de cada grupo primero las activas
+-- y las de alta más reciente. Las reconsultas (provisorias) van al final.
 -- Se reintentan las que quedaron con resultado provisorio (EN PROCESO / EN ESPERA / EN VALIDACIÓN) después de 2 horas, hasta 3 intentos.
 -- ERROR ARCA: VISEC no pudo leer el CUIT en ARCA al validar (lo pone el robot; no es un resultado real). NO se reintenta
 -- sola: el RENSPA 03.014.3.00203/01 (Bulltrade) tiene un problema conocido. Cuando se arregle, para reconsultarlas:
 --   delete from visec_consultas where estado = 'ERROR ARCA';
 create or replace function visec_pendientes(p_max int default 100) returns setof text language sql stable security definer as $$
+  with trabadas as (
+    -- series (primeros 11 dígitos) con caravanas que VISEC dejó "en validación" en las últimas 3 horas:
+    -- se mandan al final para no gastar lotes en lo que hoy no responde
+    select left(caravana, 11) as pref, count(*) as n
+      from visec_consultas
+     where estado in ('EN VALIDACIÓN','EN ESPERA','EN PROCESO') and actualizado_en > now() - interval '3 hours'
+     group by 1
+  )
   select numero from (
-    select distinct on (numero) numero, prio, estado, fecha_alta from (
-    select c.numero, 0 as prio, c.estado, c.fecha_alta
+    select distinct on (numero) numero, prio, estado, fecha_alta, reintento from (
+    select c.numero, 0 as prio, c.estado, c.fecha_alta, false as reintento
       from caravanas c join visec_solicitudes s on s.caravana = c.numero and not s.atendido
-     where c.tipo = 'electronica'
     union
     select c.numero,
-           case when c.categoria::text in ('MACHO','TORO') and p.nombre in ('PEGSA','BULLTRADE') then 1 else 2 end,
-           c.estado, c.fecha_alta
+           case when c.tipo = 'visual' then 3
+                when c.categoria::text in ('MACHO','TORO') and p.nombre in ('PEGSA','BULLTRADE') then 1 else 2 end,
+           c.estado, c.fecha_alta, (v.caravana is not null)
       from caravanas c
       left join propietarios p on p.id = c.propietario_id
       left join visec_consultas v on v.caravana = c.numero
-     where c.tipo = 'electronica' and c.estado in ('activa','salida')
+     where c.estado in ('activa','salida')
        and (v.caravana is null or (v.estado in ('EN PROCESO','EN ESPERA','EN VALIDACIÓN') and v.actualizado_en < now() - interval '2 hours' and v.intentos <= 3))
   ) u order by numero, prio) t
-  order by prio, (estado <> 'activa'), fecha_alta desc nulls last, numero limit p_max;
+  left join trabadas tb on tb.pref = left(t.numero, 11)
+  order by reintento, (prio > 0 and coalesce(tb.n, 0) > 0), prio, (estado <> 'activa'), fecha_alta desc nulls last, numero limit p_max;
 $$;
 
 -- Guardar resultados de un lote (lo llama el robot con la service key)
@@ -78,7 +88,7 @@ begin
   insert into visec_consultas (caravana, estado, observacion, informe, fecha, actualizado_en)
   select x.caravana, upper(trim(x.estado)), x.observacion, p_informe, current_date, now()
     from jsonb_to_recordset(p_filas) as x(caravana text, estado text, observacion text)
-   where x.caravana ~ '^032[0-9]{12}$' and coalesce(x.estado,'') <> ''
+   where x.caravana ~ '^(032[0-9]{12}|[A-Z]{2}[0-9]{3}[A-Z0-9]{4})$' and coalesce(x.estado,'') <> ''
   on conflict (caravana) do update set estado = excluded.estado, observacion = excluded.observacion,
      informe = excluded.informe, fecha = excluded.fecha, actualizado_en = now(), intentos = visec_consultas.intentos + 1;
   get diagnostics n = row_count;
@@ -93,7 +103,7 @@ declare n int;
 begin
   insert into visec_solicitudes (caravana, solicitado_por)
   select distinct upper(trim(x)), p_usuario from unnest(p_numeros) x
-   where upper(trim(x)) ~ '^032[0-9]{12}$'
+   where upper(trim(x)) ~ '^(032[0-9]{12}|[A-Z]{2}[0-9]{3}[A-Z0-9]{4})$'
      and not exists (select 1 from visec_solicitudes s where s.caravana = upper(trim(x)) and not s.atendido);
   get diagnostics n = row_count;
   return n;
@@ -163,7 +173,7 @@ revoke all on v_stock_cruce, v_egresos_cruce, v_caravanas from anon;
 -- Resumen VISEC por propietario (para Inicio): electrónicas en el padrón (activas y salidas)
 drop view if exists v_visec_resumen;
 create view v_visec_resumen as
-select p.nombre as propietario,
+select c.tipo::text as tipo, p.nombre as propietario,
        count(*) filter (where v.estado = 'HABILITADA') as habilitadas,
        count(*) filter (where v.estado = 'INHABILITADA') as inhabilitadas,
        count(*) filter (where v.estado = 'NÚMERO INEXISTENTE') as inexistentes,
@@ -173,8 +183,8 @@ select p.nombre as propietario,
        count(*) as total
   from caravanas c join propietarios p on p.id = c.propietario_id
   left join visec_consultas v on v.caravana = c.numero
- where c.tipo = 'electronica' and c.estado in ('activa','salida')
- group by p.nombre, p.orden order by p.orden;
+ where c.estado in ('activa','salida')
+ group by c.tipo, p.nombre, p.orden order by c.tipo, p.orden;
 alter view v_visec_resumen set (security_invoker = true);
 grant select on v_visec_resumen to authenticated;
 revoke all on v_visec_resumen from anon;

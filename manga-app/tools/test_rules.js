@@ -45,7 +45,7 @@ ok(r.color === 'verde' && r.motivos[0] === 'REPETIDA', 'repetida mantiene el col
 
 // amarillo: solo si no está en el padrón
 r = R.evaluar(null, S('CONSUMO', 'VACA'), false, hoy);
-ok(r.color === 'amarillo' && r.motivos[0] === 'No está en el padrón', 'no está en el padrón = amarillo');
+ok(r.color === 'amarillo' && r.motivos[0] === 'Caravana inexistente: no está en el padrón', 'no está en el padrón = amarillo');
 r = R.evaluar(null, S('CONSUMO', 'VACA'), true, hoy);
 ok(r.color === 'amarillo' && r.motivos.includes('REPETIDA'), 'no está + repetida');
 

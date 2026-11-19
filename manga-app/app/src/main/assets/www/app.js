@@ -154,7 +154,7 @@ function mostrarLectura(l) {
   const s = $('s-read'); s.classList.remove('c-verde', 'c-amarillo', 'c-rojo'); s.classList.add('c-' + l.color);
   $('rdEsperando').classList.add('hidden'); $('rdBox').classList.remove('hidden');
   $('rdNum').textContent = l.caravana;
-  $('rdBig').textContent = l.color === 'verde' ? 'OK' : l.color === 'amarillo' ? 'NO ESTÁ' : 'NO';
+  $('rdBig').textContent = l.color === 'verde' ? 'OK' : l.color === 'amarillo' ? 'INEXISTENTE' : 'NO';
   $('rdElegir').classList.add('hidden');
   const det = [];
   if (l.propietario) det.push(l.propietario);
@@ -200,16 +200,35 @@ function esperarConexion(ms) {
 window.Manga = {
   onLine(line) {
     addLog('< ' + line);
-    const num = Reglas.extraerCaravana(line);
-    if (num) return procesar(num, 'baston');
-    const parcial = Reglas.extraerParcial(line);
-    if (parcial && sesion) procesarParcial(parcial);
+    try {
+      const num = Reglas.extraerCaravana(line);
+      if (num) return procesar(num, 'baston');
+      const parcial = Reglas.extraerParcial(line);
+      if (parcial && sesion) procesarParcial(parcial);
+      else if (sesion && !parcial) addLog('  (sin número de caravana en la línea)');
+    } catch (e) { mostrarError(e, line); }
   },
   onStatus(st) { conn = st || conn; pintarConn(); },
   onLog(t) { addLog(t); },
   onPermission(ok) { if (ok && cfg.modo !== 'usb' && direccionBt()) A.connectBluetooth(direccionBt()); else if (!ok) toast('Sin permiso de Bluetooth no se puede conectar el lector', 4000); },
   onResume() { try { conn = JSON.parse(A.status()); } catch (e) {} pintarConn(); if (sesion && !conn.connected && cfg.modo !== 'usb') A.reconnect(); }
 };
+// Errores al procesar una lectura: se ven en pantalla y quedan en Diagnóstico (en vez de una pantalla en blanco)
+function mostrarError(e, ctx) {
+  const m = (e && (e.stack || e.message)) || String(e);
+  addLog('ERROR ' + m + (ctx ? ' | línea: ' + ctx : ''));
+  try {
+    const s = $('s-read'); if (s.classList.contains('on')) {
+      s.classList.remove('c-verde', 'c-amarillo', 'c-rojo'); $('rdElegir').classList.add('hidden');
+      $('rdEsperando').classList.add('hidden'); $('rdBox').classList.remove('hidden');
+      $('rdNum').textContent = ctx ? String(ctx).slice(0, 20) : ''; $('rdBig').textContent = 'ERROR'; $('rdDet').textContent = 'La app no pudo procesar la lectura';
+      $('rdMot').textContent = (e && e.message) || String(e); $('rdFuente').textContent = 'Revisá Diagnóstico y avisá';
+    }
+  } catch (_) {}
+  toast('Error: ' + ((e && e.message) || e), 5000);
+}
+window.addEventListener('error', ev => { addLog('ERROR JS ' + (ev.message || '') + ' @' + (ev.filename || '').split('/').pop() + ':' + ev.lineno); });
+window.addEventListener('unhandledrejection', ev => { addLog('ERROR promesa ' + ((ev.reason && (ev.reason.message || ev.reason)) || '')); });
 function addLog(t) { logLines.push(new Date().toLocaleTimeString('es-AR') + ' ' + t); if (logLines.length > 300) logLines.shift(); if ($('s-diag').classList.contains('on')) pintarLog(); }
 function pintarLog() { const el = $('dgLog'); el.textContent = logLines.join('\n'); el.scrollTop = el.scrollHeight; }
 
@@ -347,7 +366,7 @@ function pintarBanner(l) {
   if (!l) { b.classList.add('hidden'); return; }
   b.classList.remove('hidden'); b.style.background = COLOR_FONDO[l.color];
   $('mnBNum').textContent = l.caravana;
-  $('mnBBig').textContent = l.color === 'verde' ? 'OK' : l.color === 'amarillo' ? 'NO ESTÁ' : 'NO';
+  $('mnBBig').textContent = l.color === 'verde' ? 'OK' : l.color === 'amarillo' ? 'INEXISTENTE' : 'NO';
   const det = []; if (l.propietario) det.push(l.propietario); if (l.categoria) det.push(l.categoria); if (l.dias != null) det.push(l.dias + ' días en SENASA'); if (l.estado && l.estado !== 'activa') det.push('estado: ' + l.estado);
   $('mnBDet').textContent = det.join(' · '); $('mnBMot').textContent = l.motivos.join(' — ');
 }

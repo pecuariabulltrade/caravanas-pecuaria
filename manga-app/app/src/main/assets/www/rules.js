@@ -44,7 +44,7 @@ const Reglas = (() => {
   function evaluar(fila, sesion, yaLeida, hoyISO) {
     const motivos = [];
     if (!fila) {
-      motivos.push('No está en el padrón');
+      motivos.push('Caravana inexistente: no está en el padrón');
       if (yaLeida) motivos.push('REPETIDA');
       return { color: 'amarillo', motivos, dias: null, estado: null, propietario: null, categoria: null };
     }
