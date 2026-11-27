@@ -37,7 +37,7 @@ let fallos = 0; const ok = (c, m) => { if (!c) { fallos++; console.log('FALLA:',
     window.Android = {
       version: () => '1.0.0-test', deviceName: () => 'Tablet Prueba', online: () => true,
       hasBluetoothPermission: () => true, requestBluetoothPermission: () => setTimeout(() => Manga.onPermission(true), 5),
-      bluetoothEnabled: () => true, pairedDevices: () => JSON.stringify([{ name: 'XR5000 1234', address: 'AA:BB' }, { name: 'XRS2i 777', address: 'CC:DD' }]),
+      bluetoothEnabled: () => true, pairedDevices: () => JSON.stringify([{ name: 'XR5000 1234', address: 'AA:BB' }, { name: 'XRS2i 777', address: 'CC:DD' }, { name: 'XR5000 1234', address: 'EE:FF' }]),
       __lastBt: null,
       connectBluetooth: (a) => { window.Android.__lastBt = a; setTimeout(() => { window.__st = { connected: true, via: 'bluetooth', device: a === 'CC:DD' ? 'XRS2i 777' : 'XR5000 1234', error: '' }; Manga.onStatus(window.__st); }, 200); },
       usbDevices: () => '[]', setUsbBaud: () => {}, connectUsb: () => {}, disconnect: () => {}, reconnect: () => {},
@@ -65,8 +65,14 @@ let fallos = 0; const ok = (c, m) => { if (!c) { fallos++; console.log('FALLA:',
   await page.click('#cfgCambiarUser'); ok(await page.isVisible('#cfgEmail') && (await page.inputValue('#cfgPass')) === '', 'Cambiar usuario muestra el formulario sin contraseña');
   await page.fill('#cfgEmail', 'manga@pecuariabulltrade.com'); await page.fill('#cfgPass', 'secreta'); await page.click('#cfgProbar'); await page.waitForSelector('#cfgUserOk:not(.hidden)');
   await page.selectOption('#cfgBt', 'AA:BB');
+  // nombre propio para distinguir dos XR5000
+  const opts = await page.evaluate(() => [...document.querySelectorAll('#cfgBt option')].map(o => o.textContent));
+  ok(opts.some(t => t.includes('AA:BB')) && opts.some(t => t.includes('EE:FF')), 'el desplegable muestra la cola de la dirección: ' + opts.join(' | '));
+  await page.fill('#cfgAlias', 'Monitor 1'); await page.click('#cfgAliasGuardar');
+  const opt = await page.evaluate(() => document.querySelector('#cfgBt option[value="AA:BB"]').textContent);
+  ok(opt.startsWith('Monitor 1 (XR5000 1234)') && await page.inputValue('#cfgBt') === 'AA:BB', 'nombre propio en la lista: ' + opt);
   await page.click('#setupVolver');
-  ok(await page.isVisible('#s-home'), 'vuelve a inicio');
+  ok(await page.isVisible('#s-home') && (await page.textContent('#homeInfo')).includes('Monitor 1'), 'inicio muestra el nombre propio');
 
   await page.click('#btnIniciar');
   await page.waitForFunction(() => !document.getElementById('ckContinuar').disabled, null, { timeout: 20000 });

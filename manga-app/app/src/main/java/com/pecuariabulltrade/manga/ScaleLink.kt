@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -44,6 +45,7 @@ class ScaleLink(private val context: Context, private val listener: Listener) {
     @Volatile private var deviceName = ""
     @Volatile private var lastError = ""
     private val stopFlag = AtomicBoolean(false)
+    @Volatile private var gen = 0          // cada connect*() suma 1; los hilos de una generación vieja terminan solos
     private var worker: Thread? = null
     private var btSocket: BluetoothSocket? = null
     private var usbPort: UsbSerialPort? = null
@@ -82,15 +84,52 @@ class ScaleLink(private val context: Context, private val listener: Listener) {
 
     fun bluetoothEnabled(): Boolean = adapter?.isEnabled == true
 
+    private var serverThread: Thread? = null
+    private var serverSocket: BluetoothServerSocket? = null
+    private val lock = Any()
+
+    /** Adopta un socket ya conectado (saliente o entrante); devuelve false si ya había otro activo. */
+    private fun adoptar(sock: BluetoothSocket, origen: String): Boolean {
+        synchronized(lock) {
+            if (connected) return false
+            btSocket = sock
+            via = "bluetooth"; connected = true; lastError = ""
+            deviceName = try { sock.remoteDevice?.name ?: deviceName } catch (_: Exception) { deviceName }
+        }
+        log("Conectado a $deviceName ($origen)")
+        publish()
+        return true
+    }
+
+    private fun soltar(sock: BluetoothSocket?) {
+        synchronized(lock) {
+            if (btSocket === sock) {
+                try { btSocket?.close() } catch (_: Exception) {}
+                btSocket = null
+                if (connected) { connected = false; via = ""; publish() }
+            } else {
+                try { sock?.close() } catch (_: Exception) {}
+            }
+        }
+    }
+
+    /**
+     * Conexión saliente a la balanza/bastón (la tablet llama) y, en paralelo, escucha entrante
+     * (la balanza llama a la tablet, p.ej. XR5000 con Autoconexión: Sí). Vale la primera que se logre.
+     */
     @SuppressLint("MissingPermission")
     fun connectBluetooth(address: String) {
         disconnect(keepAuto = true)
         lastBtAddress = address
         stopFlag.set(false)
+        val myGen = ++gen
+        startServer(myGen)
         worker = Thread {
             var attempt = 0
-            while (!stopFlag.get()) {
+            while (!stopFlag.get() && myGen == gen) {
+                if (connected) { try { Thread.sleep(1000) } catch (_: InterruptedException) { break }; continue }
                 attempt++
+                var sock: BluetoothSocket? = null
                 try {
                     val ad = adapter ?: throw IOException("La tablet no tiene Bluetooth")
                     if (!ad.isEnabled) throw IOException("Bluetooth apagado")
@@ -98,33 +137,66 @@ class ScaleLink(private val context: Context, private val listener: Listener) {
                     deviceName = dev.name ?: address
                     try { ad.cancelDiscovery() } catch (_: Exception) {}
                     log("Conectando por Bluetooth a $deviceName (intento $attempt)…")
-                    var sock: BluetoothSocket? = null
+                    var err1 = ""
                     try {
                         sock = dev.createRfcommSocketToServiceRecord(SPP_UUID)
                         sock.connect()
                     } catch (e: IOException) {
+                        err1 = e.message ?: e.toString()
                         try { sock?.close() } catch (_: Exception) {}
+                        sock = null
+                        if (connected || stopFlag.get() || myGen != gen) throw IOException("cancelado")
                         // Algunos equipos solo aceptan el canal 1 directo
+                        log("  por servicio SPP: $err1 — probando canal 1")
                         val m = dev.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
                         sock = m.invoke(dev, 1) as BluetoothSocket
-                        sock.connect()
+                        try { sock.connect() } catch (e2: IOException) { throw IOException("SPP: $err1 | canal 1: ${e2.message}") }
                     }
-                    btSocket = sock
-                    via = "bluetooth"; connected = true; lastError = ""
-                    log("Conectado a $deviceName")
-                    publish()
-                    readLoop(sock!!.inputStream)
+                    if (myGen != gen || !adoptar(sock!!, "saliente")) { try { sock!!.close() } catch (_: Exception) {}; continue }
+                    readLoop(sock.inputStream)
                 } catch (e: Exception) {
-                    lastError = e.message ?: e.toString()
-                    log("Bluetooth: $lastError")
+                    if (e.message != "cancelado") {
+                        lastError = e.message ?: e.toString()
+                        log("Bluetooth: $lastError")
+                    }
                 } finally {
-                    try { btSocket?.close() } catch (_: Exception) {}
-                    btSocket = null
-                    if (connected) { connected = false; via = ""; publish() }
+                    soltar(sock)
                 }
-                if (stopFlag.get() || !autoReconnect) break
+                if (stopFlag.get() || !autoReconnect || myGen != gen) break
                 publish()
                 try { Thread.sleep(if (attempt < 3) 2000 else 5000) } catch (_: InterruptedException) { break }
+            }
+        }.apply { isDaemon = true; start() }
+    }
+
+    /** Escucha conexiones entrantes por SPP (la balanza se conecta sola a la tablet). */
+    @SuppressLint("MissingPermission")
+    private fun startServer(myGen: Int) {
+        serverThread = Thread {
+            while (!stopFlag.get() && myGen == gen) {
+                if (connected) { try { Thread.sleep(1000) } catch (_: InterruptedException) { break }; continue }
+                var sock: BluetoothSocket? = null
+                try {
+                    val ad = adapter ?: break
+                    if (!ad.isEnabled) { Thread.sleep(2000); continue }
+                    val ss = ad.listenUsingRfcommWithServiceRecord("LectorManga", SPP_UUID)
+                    serverSocket = ss
+                    sock = ss.accept()
+                    try { ss.close() } catch (_: Exception) {}
+                    serverSocket = null
+                    if (myGen != gen || !adoptar(sock, "entrante")) { try { sock.close() } catch (_: Exception) {}; continue }
+                    readLoop(sock.inputStream)
+                } catch (e: Exception) {
+                    if (!stopFlag.get() && connected) {
+                        lastError = e.message ?: e.toString()
+                        log("Bluetooth (entrante): $lastError")
+                    }
+                    try { serverSocket?.close() } catch (_: Exception) {}
+                    serverSocket = null
+                    if (!stopFlag.get()) try { Thread.sleep(1500) } catch (_: InterruptedException) { break }
+                } finally {
+                    soltar(sock)
+                }
             }
         }.apply { isDaemon = true; start() }
     }
@@ -173,6 +245,7 @@ class ScaleLink(private val context: Context, private val listener: Listener) {
             return
         }
         stopFlag.set(false)
+        val myGen = ++gen
         worker = Thread {
             try {
                 val conn = mgr.openDevice(device) ?: throw IOException("No se pudo abrir el USB")
@@ -187,7 +260,7 @@ class ScaleLink(private val context: Context, private val listener: Listener) {
                 publish()
                 val buf = ByteArray(1024)
                 val sb = StringBuilder()
-                while (!stopFlag.get()) {
+                while (!stopFlag.get() && myGen == gen) {
                     val n = port.read(buf, 500)
                     if (n > 0) feed(sb, buf, n)
                 }
@@ -228,11 +301,16 @@ class ScaleLink(private val context: Context, private val listener: Listener) {
 
     fun disconnect(keepAuto: Boolean = false) {
         if (!keepAuto) autoReconnect = false
+        gen++
         stopFlag.set(true)
         try { btSocket?.close() } catch (_: Exception) {}
+        try { serverSocket?.close() } catch (_: Exception) {}
+        serverSocket = null
         try { usbPort?.close() } catch (_: Exception) {}
         worker?.interrupt()
         worker = null
+        serverThread?.interrupt()
+        serverThread = null
         if (connected) { connected = false; via = ""; publish() }
         if (!keepAuto) autoReconnect = true
     }

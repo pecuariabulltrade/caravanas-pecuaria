@@ -32,9 +32,12 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { toast('No se pudo guardar: ' + e.message, 4000); } },
   del(k) { try { localStorage.removeItem(k); } catch (e) {} }
 };
-let cfg = store.get('cfg', { email: '', password: '', modo: 'bluetooth', btAddress: '', btName: '', bastonAddress: '', bastonName: '', baud: 9600 });
+let cfg = store.get('cfg', { email: '', password: '', modo: 'bluetooth', btAddress: '', btName: '', bastonAddress: '', bastonName: '', baud: 9600, alias: {} });
+if (!cfg.alias) cfg.alias = {};   // nombres propios por dirección Bluetooth (p.ej. 'Monitor 1')
+const aliasDe = (addr, nombre) => (addr && cfg.alias[addr]) || nombre || addr || '';
+const cola = addr => addr ? addr.slice(-5) : '';
 // Qué equipo manda las caravanas según el modo: 'bluetooth' = balanza XR5000, 'baston' = bastón XRS2i directo, 'usb' = balanza por cable
-const MODOS = { bluetooth: { nombre: 'Balanza XR5000', ayuda: 'Primero emparejá la balanza desde los ajustes Bluetooth de la tablet (en el XR5000: Bluetooth encendido y visible).' }, baston: { nombre: 'Bastón XRS2i', ayuda: 'Primero emparejá el bastón desde los ajustes Bluetooth de la tablet (en el XRS2i: Settings → Bluetooth en Manual; Advanced: Connect Mode Default y Output Default). El bastón se conecta a un solo equipo a la vez: si está conectado a la balanza, no puede estar conectado a la tablet.' }, usb: { nombre: 'Balanza XR5000 (cable)', ayuda: '' } };
+const MODOS = { bluetooth: { nombre: 'Balanza XR5000', ayuda: 'Primero emparejá la balanza desde los ajustes Bluetooth de la tablet (en el XR5000: Bluetooth encendido y visible). La app llama a la balanza y, a la vez, acepta que la balanza la llame (Autoconexión en el XR5000, en Sí o en No).' }, baston: { nombre: 'Bastón XRS2i', ayuda: 'Primero emparejá el bastón desde los ajustes Bluetooth de la tablet (en el XRS2i: Settings → Bluetooth en Manual; Advanced: Connect Mode Default y Output Default). El bastón se conecta a un solo equipo a la vez: si está conectado a la balanza, no puede estar conectado a la tablet.' }, usb: { nombre: 'Balanza XR5000 (cable)', ayuda: '' } };
 function modoInfo() { return MODOS[cfg.modo] || MODOS.bluetooth; }
 function direccionBt() { return cfg.modo === 'baston' ? cfg.bastonAddress : cfg.btAddress; }
 function nombreBt() { return cfg.modo === 'baston' ? cfg.bastonName : cfg.btName; }
@@ -184,7 +187,7 @@ function pintarConn() {
   const eq = cfg.modo === 'baston' ? 'Bastón' : 'Balanza';
   const t = conn.connected ? `${eq}: ${conn.via === 'usb' ? 'USB' : 'Bluetooth'} ✓` : (conn.error ? `${eq}: sin conexión` : `${eq}: —`);
   const cls = 'pill ' + (conn.connected ? 'ok' : 'bad');
-  ['homeConn', 'rdConn', 'dgConn'].forEach(id => { $(id).textContent = t; $(id).className = cls; $(id).title = conn.error || conn.device; });
+  ['homeConn', 'rdConn', 'dgConn'].forEach(id => { $(id).textContent = t; $(id).className = cls; $(id).title = conn.error || nombreBt() || conn.device; });
 }
 function conectarBalanza() {
   if (cfg.modo === 'usb') { A.setUsbBaud(+cfg.baud || 9600); A.connectUsb(); return true; }
@@ -263,7 +266,7 @@ async function chequeo() {
     ck(1, 'run', 'Conectando…');
     if (conn.connected) bal = true;
     else if (conectarBalanza()) bal = await esperarConexion(CFG.ESPERA_BALANZA_MS);
-    ck(1, bal ? 'ok' : 'bad', bal ? `Conectado por ${conn.via === 'usb' ? 'cable USB' : 'Bluetooth'} (${conn.device})` : (conn.error || `No se pudo conectar. Revisá que ${cfg.modo === 'baston' ? 'el bastón esté encendido, emparejado y no conectado a la balanza' : 'la balanza esté encendida y emparejada'}.`));
+    ck(1, bal ? 'ok' : 'bad', bal ? `Conectado por ${conn.via === 'usb' ? 'cable USB' : 'Bluetooth'} (${conn.via === 'usb' ? conn.device : (nombreBt() || conn.device)})` : (conn.error || `No se pudo conectar. Revisá que ${cfg.modo === 'baston' ? 'el bastón esté encendido, emparejado y no conectado a la balanza' : 'la balanza esté encendida y emparejada'}.`));
   }
   // 2. internet
   ck(2, 'run', 'Comprobando…');
@@ -465,14 +468,25 @@ function pintarBt() {
   let devs = []; try { devs = JSON.parse(A.pairedDevices()); } catch (e) {}
   const s = $('cfgBt');
   const actual = $('cfgModo').value === 'baston' ? cfg.bastonAddress : cfg.btAddress;
-  s.innerHTML = '<option value="">— elegir —</option>' + devs.map(d => `<option value="${esc(d.address)}" ${d.address === actual ? 'selected' : ''}>${esc(d.name || d.address)}</option>`).join('');
+  s.innerHTML = '<option value="">— elegir —</option>' + devs.map(d => `<option value="${esc(d.address)}" ${d.address === actual ? 'selected' : ''}>${esc(aliasDe(d.address, d.name))}${cfg.alias[d.address] ? ' (' + esc(d.name || '') + ')' : ''} · ${esc(cola(d.address))}</option>`).join('');
   if (!devs.length) s.innerHTML += '<option value="" disabled>No hay equipos emparejados</option>';
+  pintarAlias();
   if (!A.bluetoothEnabled()) $('cfgBalMsg').innerHTML = '<div class="msg warn">El Bluetooth de la tablet está apagado.</div>';
 }
 function pintarUsb() { let d = []; try { d = JSON.parse(A.usbDevices()); } catch (e) {} $('cfgUsbInfo').textContent = d.length ? 'Detectado: ' + d.map(x => x.name).join(', ') : 'No se detecta ningún adaptador serie por USB (conectá el cable y volvé a abrir esta pantalla).'; }
 $('cfgBtRefrescar').onclick = pintarBt;
 $('cfgBtAjustes').onclick = () => A.openBluetoothSettings();
-$('cfgBt').onchange = () => { const o = $('cfgBt').selectedOptions[0]; if ($('cfgModo').value === 'baston') { cfg.bastonAddress = o.value; cfg.bastonName = o.value ? o.textContent : ''; } else { cfg.btAddress = o.value; cfg.btName = o.value ? o.textContent : ''; } store.set('cfg', cfg); };
+function nombreDeOpcion(o) { if (!o || !o.value) return ''; let devs = []; try { devs = JSON.parse(A.pairedDevices()); } catch (e) {} const d = devs.find(x => x.address === o.value); return aliasDe(o.value, d && d.name); }
+function pintarAlias() { const addr = $('cfgBt').value; $('cfgAliasBox').classList.toggle('hidden', !addr); $('cfgAlias').value = addr ? (cfg.alias[addr] || '') : ''; }
+$('cfgBt').onchange = () => { const o = $('cfgBt').selectedOptions[0]; const nom = nombreDeOpcion(o); if ($('cfgModo').value === 'baston') { cfg.bastonAddress = o.value; cfg.bastonName = nom; } else { cfg.btAddress = o.value; cfg.btName = nom; } store.set('cfg', cfg); pintarAlias(); };
+$('cfgAliasGuardar').onclick = () => {
+  const addr = $('cfgBt').value; if (!addr) return toast('Elegí primero el equipo en la lista');
+  const a = $('cfgAlias').value.trim();
+  if (a) cfg.alias[addr] = a; else delete cfg.alias[addr];
+  const nom = nombreDeOpcion($('cfgBt').selectedOptions[0]);
+  if (cfg.btAddress === addr) cfg.btName = nom; if (cfg.bastonAddress === addr) cfg.bastonName = nom;
+  store.set('cfg', cfg); pintarBt(); toast(a ? `Guardado: ${a}` : 'Nombre quitado');
+};
 $('cfgBaud').onchange = () => { cfg.baud = +$('cfgBaud').value; store.set('cfg', cfg); };
 $('cfgModo').addEventListener('change', () => { cfg.modo = $('cfgModo').value; store.set('cfg', cfg); A.disconnect(); pintarModo(); });
 $('cfgProbar').onclick = async () => {
@@ -487,7 +501,7 @@ $('cfgProbarBalanza').onclick = async () => {
   msg('cfgBalMsg', 'warn', 'Conectando…');
   if (!conectarBalanza()) return msg('cfgBalMsg', 'err', `Elegí ${cfg.modo === 'baston' ? 'el bastón' : 'la balanza'} en la lista de equipos emparejados`);
   const ok = await esperarConexion(CFG.ESPERA_BALANZA_MS);
-  if (ok) msg('cfgBalMsg', 'ok', `Conectado (${conn.device}). ${cfg.modo === 'baston' ? 'Leé una caravana con el bastón' : 'Registrá un peso en la balanza'} y mirá en Diagnóstico si llega la caravana.`);
+  if (ok) msg('cfgBalMsg', 'ok', `Conectado (${cfg.modo === 'usb' ? conn.device : (nombreBt() || conn.device)}). ${cfg.modo === 'baston' ? 'Leé una caravana con el bastón' : 'Registrá un peso en la balanza'} y mirá en Diagnóstico si llega la caravana.`);
   else msg('cfgBalMsg', 'err', 'No se pudo conectar: ' + (conn.error || 'sin respuesta'));
 };
 $('cfgDiag').onclick = () => { pintarLog(); show('diag'); };

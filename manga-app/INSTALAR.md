@@ -43,6 +43,9 @@ En ⚙ Configuración → Conexión hay tres opciones:
 3. En la app: Configuración → Conexión: *Bastón XRS2i directo* → elegirlo en la lista → *Probar conexión*. Leer una caravana y mirar en Diagnóstico que llegue.
 4. El bastón se conecta a un solo equipo a la vez: si está vinculado a la balanza, no puede mandarle a la tablet (y al revés). Para trabajar con la balanza, volver a la opción *Balanza XR5000 por Bluetooth*.
 
+### Si dice "read failed, socket might closed or timeout"
+La balanza rechazó o no respondió el canal Bluetooth. Probar: en el XR5000, *Ajustes → Conexiones → Bluetooth → (la tablet)*, Autoconexión en No; salir de Ajustes en la balanza; apagar y prender el Bluetooth de la tablet; "Probar conexión". Si sigue, "olvidar" el XR5000 en la tablet y volver a emparejarlo. Desde la versión 1.0.9 la app también acepta la conexión que inicia la balanza, así que Autoconexión en Sí también funciona.
+
 ### Balanza XR5000 por Bluetooth
 1. En el XR5000: *Settings > Bluetooth*: encendido y visible (discoverable). El bastón ya tiene que estar conectado a la balanza.
 2. En la tablet: *Ajustes > Bluetooth* > emparejar con el XR5000 (aparece como "XR5000" + número). Si pide PIN, probar `0000` o `1234`.
